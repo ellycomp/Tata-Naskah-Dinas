@@ -1,16 +1,14 @@
 import type { DriveWorkspaceSnapshot } from './googleDriveSync';
 
+type GoogleScriptRunner = {
+  withSuccessHandler(callback: (value: unknown) => void): GoogleScriptRunner;
+  withFailureHandler(callback: (error: { message?: string }) => void): GoogleScriptRunner;
+  [functionName: string]: unknown;
+};
+
 declare global {
   interface Window {
-    google?: {
-      script?: {
-        run: {
-          withSuccessHandler(callback: (value: unknown) => void): Window['google']['script']['run'];
-          withFailureHandler(callback: (error: { message?: string }) => void): Window['google']['script']['run'];
-          [functionName: string]: unknown;
-        };
-      };
-    };
+    google?: { script?: { run: GoogleScriptRunner } };
   }
 }
 
