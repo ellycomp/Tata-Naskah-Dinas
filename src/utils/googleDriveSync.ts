@@ -80,6 +80,7 @@ async function requestDriveToken(clientId: string, expectedEmail: string): Promi
           return;
         }
         accessToken = response.access_token;
+        tokenAccountEmail = expectedEmail;
         tokenExpiresAt = Date.now() + 55 * 60 * 1000;
         resolve(response.access_token);
       },
@@ -151,7 +152,7 @@ async function downloadJson(token: string, fileId: string): Promise<DriveWorkspa
     token
   );
   const value = (await response.json()) as Partial<DriveWorkspaceSnapshot>;
-  if (value.schemaVersion !== 1 || !Array.isArray(value.profiles) || !Array.isArray(value.archive)) {
+  if (value.schemaVersion !== 1 || !value.currentDoc || typeof value.currentDoc !== 'object' || !Array.isArray(value.profiles) || !Array.isArray(value.archive)) {
     throw new Error('Berkas cadangan Google Drive tidak dikenali atau formatnya rusak.');
   }
   return value as DriveWorkspaceSnapshot;
@@ -179,6 +180,7 @@ export async function syncWorkspaceWithGoogleDrive(
   const tombstones = readTombstones();
   snapshot = {
     ...snapshot,
+    profileUpdatedAt: { ...readProfileTimestamps(), ...(snapshot.profileUpdatedAt || {}) },
     deletedArchiveIds: [...new Set([...(snapshot.deletedArchiveIds || []), ...tombstones.archive])],
     deletedProfileIds: [...new Set([...(snapshot.deletedProfileIds || []), ...tombstones.profiles])],
   };
@@ -205,7 +207,7 @@ export async function syncWorkspaceWithGoogleDrive(
   }
 
   const cloud = await downloadJson(token, file.id);
-  const mergedProfileUpdatedAt = { ...(cloud.profileUpdatedAt || {}), ...(snapshot.profileUpdatedAt || {}) };
+  const mergedProfileUpdatedAt = { ...(cloud.profileUpdatedAt || {}), ...readProfileTimestamps(), ...(snapshot.profileUpdatedAt || {}) };
   const mergedDeletedArchiveIds = [...new Set([...(cloud.deletedArchiveIds || []), ...(snapshot.deletedArchiveIds || [])])];
   const mergedDeletedProfileIds = [...new Set([...(cloud.deletedProfileIds || []), ...(snapshot.deletedProfileIds || [])])];
   const deletedArchive = new Set(mergedDeletedArchiveIds);
@@ -233,6 +235,20 @@ export async function syncWorkspaceWithGoogleDrive(
 }
 
 const TOMBSTONE_KEY = 'tatanaskah-drive-tombstones-v1';
+const PROFILE_TIMESTAMPS_KEY = 'tatanaskah-drive-profile-timestamps-v1';
+
+function readProfileTimestamps(): Record<string, string> {
+  try {
+    const value = JSON.parse(localStorage.getItem(PROFILE_TIMESTAMPS_KEY) || '{}');
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, string> : {};
+  } catch { return {}; }
+}
+
+export function recordProfileUpdated(id: string): void {
+  const values = readProfileTimestamps();
+  values[id] = new Date().toISOString();
+  localStorage.setItem(PROFILE_TIMESTAMPS_KEY, JSON.stringify(values));
+}
 
 function readTombstones(): { archive: string[]; profiles: string[] } {
   try {
