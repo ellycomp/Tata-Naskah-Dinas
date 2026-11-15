@@ -84,6 +84,36 @@ function setupWorkspace() {
   };
 }
 
+/**
+ * Tambahkan pengguna SIT Qudwah ke daftar akses dan bagikan folder pusat.
+ * Jalankan dari aplikasi setelah admin pertama dibuat.
+ * role: admin | editor | pembaca
+ */
+function addSchoolUser(email, nama, jabatan, role) {
+  const adminEmail = requireAuthorizedUser_();
+  const ss = getDatabase_();
+  const rows = ss.getSheetByName('Users').getDataRange().getValues();
+  const admin = rows.slice(1).find(r =>
+    String(r[0]).trim().toLowerCase() === adminEmail && String(r[3]).toLowerCase() === 'admin'
+  );
+  if (!admin) throw new Error('Hanya administrator yang dapat menambahkan pengguna.');
+  const targetEmail = String(email || '').trim().toLowerCase();
+  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(targetEmail)) throw new Error('Alamat email tidak valid.');
+  const accessRole = ['admin', 'editor', 'pembaca'].includes(String(role)) ? String(role) : 'editor';
+  const folderId = PropertiesService.getScriptProperties().getProperty('TN_ROOT_FOLDER_ID');
+  const root = DriveApp.getFolderById(folderId);
+  if (accessRole === 'pembaca') root.addViewer(targetEmail);
+  else root.addEditor(targetEmail);
+
+  const users = ss.getSheetByName('Users');
+  const found = rows.findIndex((r, i) => i > 0 && String(r[0]).trim().toLowerCase() === targetEmail);
+  const row = [targetEmail, nama || '', jabatan || '', accessRole, true, new Date()];
+  if (found > 0) users.getRange(found + 1, 1, 1, row.length).setValues([row]);
+  else users.appendRow(row);
+  logAction_(adminEmail, 'ADD_USER', targetEmail, accessRole);
+  return { success: true, email: targetEmail, role: accessRole };
+}
+
 function getAppStatus() {
   const props = PropertiesService.getScriptProperties();
   const rootId = props.getProperty('TN_ROOT_FOLDER_ID');
