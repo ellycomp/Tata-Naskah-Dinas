@@ -88,10 +88,9 @@ function getAppStatus() {
   const props = PropertiesService.getScriptProperties();
   const rootId = props.getProperty('TN_ROOT_FOLDER_ID');
   const ssId = props.getProperty('TN_SPREADSHEET_ID');
+  // Public status endpoint intentionally reveals no Drive/Spreadsheet URLs or IDs.
   return {
     initialized: Boolean(rootId && ssId),
-    rootFolderUrl: rootId ? DriveApp.getFolderById(rootId).getUrl() : '',
-    spreadsheetUrl: ssId ? SpreadsheetApp.openById(ssId).getUrl() : '',
     appName: 'Tata Naskah Dinas - SIT Qudwah'
   };
 }
