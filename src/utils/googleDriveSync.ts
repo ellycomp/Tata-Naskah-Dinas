@@ -170,7 +170,8 @@ function mergeById<T extends { id: string; updatedAt?: string }>(local: T[], clo
     const previous = merged.get(item.id);
     const itemUpdatedAt = item.updatedAt || '';
     const previousUpdatedAt = previous?.updatedAt || '';
-    if (!previous || itemUpdatedAt >= previousUpdatedAt) {
+    // Keep cloud data when timestamps are equal or the local copy has no timestamp.
+    if (!previous || (itemUpdatedAt && itemUpdatedAt > previousUpdatedAt)) {
       merged.set(item.id, item);
     }
   }
@@ -237,7 +238,8 @@ export async function syncWorkspaceWithGoogleDrive(
     const previous = profileMap.get(profile.id);
     const localTime = localProfileTimes[profile.id] || '';
     const cloudTime = cloudProfileTimes[profile.id] || '';
-    if (!previous || localTime >= cloudTime) profileMap.set(profile.id, profile);
+    // A device with no edit timestamp must not overwrite an existing cloud profile.
+    if (!previous || (localTime && localTime > cloudTime)) profileMap.set(profile.id, profile);
   }
   const mergedProfiles = [...profileMap.values()].filter((item) => !deletedProfiles.has(item.id));
   const mergedArchive = mergeById(snapshot.archive, cloud.archive).filter((item) => !deletedArchive.has(item.id));
