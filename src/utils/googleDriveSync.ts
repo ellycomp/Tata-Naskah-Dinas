@@ -27,7 +27,7 @@ export interface DriveWorkspaceSnapshot {
 }
 
 const BACKUP_FILE_NAME = 'TataNaskah-Backup.json';
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+const DRIVE_SCOPE = 'openid email https://www.googleapis.com/auth/drive.file';
 let scriptPromise: Promise<void> | null = null;
 let accessToken: string | null = null;
 let tokenExpiresAt = 0;
@@ -149,12 +149,12 @@ async function downloadJson(token: string, fileId: string): Promise<DriveWorkspa
   return value as DriveWorkspaceSnapshot;
 }
 
-function mergeById<T extends { id: string; updatedAt?: string }>(local: T[], cloud: T[]): T[] {
+function mergeById<T extends { id: string }>(local: T[], cloud: T[]): T[] {
   const merged = new Map<string, T>();
   for (const item of cloud) merged.set(item.id, item);
   for (const item of local) {
     const previous = merged.get(item.id);
-    if (!previous || (item.updatedAt || '') > (previous.updatedAt || '')) {
+    const itemUpdatedAt = (item as T & { updatedAt?: string }).updatedAt || '';\n    const previousUpdatedAt = (previous as (T & { updatedAt?: string }) | undefined)?.updatedAt || '';\n    if (!previous || itemUpdatedAt > previousUpdatedAt) {
       merged.set(item.id, item);
     }
   }
