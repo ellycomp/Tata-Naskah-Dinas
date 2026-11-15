@@ -17,6 +17,7 @@ import {
   LogIn,
   LogOut,
   User as UserIcon,
+  CloudUpload,
 } from 'lucide-react';
 import { collection, onSnapshot, query, where } from 'firebase/firestore';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -51,6 +52,7 @@ import { LetterheadManagerView } from './components/LetterheadManagerView';
 import { ArchiveView } from './components/ArchiveView';
 import { QrSignaturePanel } from './components/QrSignaturePanel';
 import { exportLetterToPdf } from './utils/pdfExport';
+import { syncWorkspaceWithGoogleDrive } from './utils/googleDriveSync';
 import {
   decodeLetterFromShareToken,
   extractSuratTokenFromInput,
@@ -286,6 +288,7 @@ function TataNaskahWorkspace() {
   const [selectedCategory, setSelectedCategory] = useState<'Semua' | LetterCategory>('Semua');
   const [zoom, setZoom] = useState<number>(0.78);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
+  const [isDriveSyncing, setIsDriveSyncing] = useState(false);
   const [mobilePane, setMobilePane] = useState<'editor' | 'preview'>('editor');
   const [showSidebarMobile, setShowSidebarMobile] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(
@@ -611,6 +614,50 @@ function TataNaskahWorkspace() {
     }
   };
 
+  const handleGoogleDriveSync = async () => {
+    if (!user?.email || !user.emailVerified) {
+      showToast('error', 'Masuk dengan akun Google dan verifikasi email terlebih dahulu.');
+      return;
+    }
+    setIsDriveSyncing(true);
+    try {
+      const merged = await syncWorkspaceWithGoogleDrive(
+        firebaseConfig.googleDriveClientId,
+        {
+          schemaVersion: 1,
+          updatedAt: new Date().toISOString(),
+          ownerEmail: user.email,
+          currentDoc,
+          profiles: letterheadProfiles,
+          archive: archivedLetters,
+        }
+      );
+      setCurrentDoc(merged.currentDoc);
+      setLetterheadProfiles(merged.profiles);
+      setArchivedLetters(merged.archive);
+
+      // Keep Firestore and Drive aligned during this first migration phase.
+      const cloudWrites = await Promise.allSettled([
+        ...merged.archive.map((item) => saveLetterToFirestore(user.uid, item)),
+        ...merged.profiles
+          .filter((profile) => profile.id.startsWith('kop-custom-'))
+          .map((profile) => saveLetterheadToFirestore(user.uid, profile)),
+      ]);
+      const failedWrites = cloudWrites.filter((result) => result.status === 'rejected').length;
+      showToast(
+        failedWrites > 0 ? 'error' : 'success',
+        failedWrites > 0
+          ? 'Cadangan Google Drive berhasil disinkronkan, tetapi sebagian data belum tersalin ke Firestore.'
+          : 'Arsip, profil kop, dan draf berhasil disinkronkan dengan Google Drive.'
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Sinkronisasi Google Drive gagal.';
+      showToast('error', message);
+    } finally {
+      setIsDriveSyncing(false);
+    }
+  };
+
   const paperDim = PAPER_DIMENSIONS[currentDoc.paperSize];
 
   return (
@@ -730,6 +777,17 @@ function TataNaskahWorkspace() {
               {isSigningIn ? 'Masuk...' : 'Masuk Google'}
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={handleGoogleDriveSync}
+            disabled={!user || !user.emailVerified || isDriveSyncing}
+            title={!user ? 'Masuk dengan Google terlebih dahulu' : 'Cadangkan dan sinkronkan data dengan Google Drive'}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
+          >
+            <CloudUpload className="w-3.5 h-3.5" />
+            {isDriveSyncing ? 'Menyinkronkan...' : 'Sinkronkan Drive'}
+          </button>
 
           <button
             type="button"
