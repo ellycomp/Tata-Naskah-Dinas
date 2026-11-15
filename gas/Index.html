@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html><head><base target="_top"><meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+body{font-family:Arial,sans-serif;background:#f3f5f7;color:#18212b;margin:0;padding:24px}
+main{max-width:680px;margin:7vh auto;background:white;padding:28px;border-radius:16px;box-shadow:0 8px 32px #10203012}
+h1{font-size:24px;margin:0 0 8px;color:#174b3a}p{line-height:1.6;color:#52616b}
+.badge{display:inline-block;background:#e4f4eb;color:#17613d;padding:6px 10px;border-radius:20px;font-size:12px}
+</style></head><body><main>
+<span class="badge">SIT QUDWAH</span>
+<h1>Tata Naskah Dinas Sekolah</h1>
+<p>Kerangka layanan Google Apps Script telah terpasang. Tahap berikutnya adalah menghubungkan antarmuka React yang sudah ada ke layanan Google Drive dan Spreadsheet.</p>
+<p id="status">Memeriksa konfigurasi penyimpanan…</p>
+<script>
+google.script.run.withSuccessHandler(function(s){
+document.getElementById('status').textContent=s.initialized?'Penyimpanan siap. Database dan folder Drive telah terhubung.':'Penyimpanan belum disiapkan. Administrator perlu menjalankan setupWorkspace() dari editor Apps Script.';
+}).withFailureHandler(function(e){
+document.getElementById('status').textContent='Status belum dapat dibaca: '+(e.message||e);
+}).getAppStatus();
+</script></main></body></html>
