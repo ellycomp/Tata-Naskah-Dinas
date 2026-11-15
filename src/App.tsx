@@ -227,6 +227,7 @@ function TataNaskahWorkspace() {
   const [zoom, setZoom] = useState<number>(0.78);
   const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
   const [isDriveSyncing, setIsDriveSyncing] = useState(false);
+  const [isDriveConnected, setIsDriveConnected] = useState(false);
   const [mobilePane, setMobilePane] = useState<'editor' | 'preview'>('editor');
   const [showSidebarMobile, setShowSidebarMobile] = useState(false);
   const [toast, setToast] = useState<{ type: 'success' | 'error'; message: string } | null>(
@@ -409,7 +410,8 @@ function TataNaskahWorkspace() {
       setCurrentDoc(merged.currentDoc);
       setLetterheadProfiles(merged.profiles);
       setArchivedLetters(merged.archive);
-      showToast('success', `Draf, ${merged.archive.length} arsip, dan ${merged.profiles.length} profil kop berhasil disinkronkan dengan Google Drive.`);
+      setIsDriveConnected(true);
+      showToast('success', `Terhubung ke Google Drive. ${merged.archive.length} arsip dan ${merged.profiles.length} profil kop tersimpan di Drive.`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sinkronisasi Google Drive gagal.';
       showToast('error', message);
@@ -417,6 +419,36 @@ function TataNaskahWorkspace() {
       setIsDriveSyncing(false);
     }
   };
+
+  // After the user connects Google Drive once, automatically save every workspace change.
+  // Local storage remains only as an emergency cache if the network is unavailable.
+  useEffect(() => {
+    if (!isDriveConnected) return;
+    const timer = window.setTimeout(async () => {
+      try {
+        const merged = await syncWorkspaceWithGoogleDrive(
+          '199915173450-re9rv4mu0a0sp7fhj2aagjrh1urqqing.apps.googleusercontent.com',
+          {
+            schemaVersion: 1,
+            updatedAt: new Date().toISOString(),
+            ownerEmail: '',
+            currentDoc,
+            profiles: letterheadProfiles,
+            archive: archivedLetters,
+          },
+          false
+        );
+        if (JSON.stringify(merged.currentDoc) !== JSON.stringify(currentDoc)) setCurrentDoc(merged.currentDoc);
+        if (JSON.stringify(merged.profiles) !== JSON.stringify(letterheadProfiles)) setLetterheadProfiles(merged.profiles);
+        if (JSON.stringify(merged.archive) !== JSON.stringify(archivedLetters)) setArchivedLetters(merged.archive);
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Penyimpanan otomatis ke Google Drive gagal.';
+        showToast('error', `Belum tersimpan di Drive: ${message}. Tekan Sinkronkan Drive untuk mencoba lagi.`);
+        setIsDriveConnected(false);
+      }
+    }, 1800);
+    return () => window.clearTimeout(timer);
+  }, [isDriveConnected, currentDoc, letterheadProfiles, archivedLetters]);
 
   const paperDim = PAPER_DIMENSIONS[currentDoc.paperSize];
 
