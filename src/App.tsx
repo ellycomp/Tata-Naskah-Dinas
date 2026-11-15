@@ -535,7 +535,7 @@ function TataNaskahWorkspace() {
         {/* Zone 3: Primary action + Google Account sync */}
         <div className="flex items-center gap-2.5 shrink-0">
           <span className="hidden sm:inline text-xs text-slate-500 whitespace-nowrap">
-            Penyimpanan lokal
+            {isDriveConnected ? 'Google Drive aktif' : 'Lokal · Drive belum terhubung'}
           </span>
 
           <button
