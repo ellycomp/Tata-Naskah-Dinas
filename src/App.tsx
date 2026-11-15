@@ -36,7 +36,8 @@ import { LetterheadManagerView } from './components/LetterheadManagerView';
 import { ArchiveView } from './components/ArchiveView';
 import { QrSignaturePanel } from './components/QrSignaturePanel';
 import { exportLetterToPdf } from './utils/pdfExport';
-import { recordDeletedArchive, recordDeletedProfile, recordProfileUpdated, syncWorkspaceWithGoogleDrive } from './utils/googleDriveSync';
+import { recordDeletedArchive, recordDeletedProfile, recordProfileUpdated } from './utils/googleDriveSync';
+import { isGoogleAppsScript, loadWorkspaceFromGoogle, syncWorkspaceToGoogle } from './utils/googleAppsScript';
 import {
   decodeLetterFromShareToken,
   extractSuratTokenFromInput,
@@ -237,6 +238,36 @@ function TataNaskahWorkspace() {
 
   const toastTimerRef = useRef<number | null>(null);
 
+  // Saat dijalankan sebagai Google Apps Script Web App, muat data pusat
+  // dari Google Spreadsheet dan Google Drive setelah UI siap.
+  useEffect(() => {
+    if (!isGoogleAppsScript()) return;
+    let cancelled = false;
+    loadWorkspaceFromGoogle()
+      .then((workspace) => {
+        if (cancelled) return;
+        if (workspace.currentDoc) setCurrentDoc(hydrateLetterDoc(workspace.currentDoc));
+        if (workspace.profiles?.length) {
+          setLetterheadProfiles(workspace.profiles.map(migrateSchoolSubUnit));
+        }
+        if (Array.isArray(workspace.archive)) {
+          const validArchive = workspace.archive.filter(
+            (item): item is LetterDocument => Boolean(item && item.templateId && item.letterhead)
+          );
+          setArchivedLetters(validArchive.map(hydrateLetterDoc));
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setToast({
+            type: 'error',
+            message: error instanceof Error ? error.message : 'Gagal memuat data Google Drive.',
+          });
+        }
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
     if (toastTimerRef.current) window.clearTimeout(toastTimerRef.current);
@@ -395,21 +426,26 @@ function TataNaskahWorkspace() {
   const handleGoogleDriveSync = async () => {
     setIsDriveSyncing(true);
     try {
-      const merged = await syncWorkspaceWithGoogleDrive(
-        '199915173450-re9rv4mu0a0sp7fhj2aagjrh1urqqing.apps.googleusercontent.com',
-        {
-          schemaVersion: 1,
-          updatedAt: new Date().toISOString(),
-          ownerEmail: '',
-          currentDoc,
-          profiles: letterheadProfiles,
-          archive: archivedLetters,
-        }
-      );
-      setCurrentDoc(merged.currentDoc);
-      setLetterheadProfiles(merged.profiles);
-      setArchivedLetters(merged.archive);
-      showToast('success', `Draf, ${merged.archive.length} arsip, dan ${merged.profiles.length} profil kop berhasil disinkronkan dengan Google Drive.`);
+      if (!isGoogleAppsScript()) {
+        throw new Error('Buka aplikasi melalui alamat Google Apps Script Web App agar penyimpanan Drive dan Spreadsheet aktif.');
+      }
+      const merged = await syncWorkspaceToGoogle({
+        schemaVersion: 1,
+        updatedAt: new Date().toISOString(),
+        ownerEmail: '',
+        currentDoc,
+        profiles: letterheadProfiles,
+        archive: archivedLetters,
+      });
+      if (merged.currentDoc) setCurrentDoc(hydrateLetterDoc(merged.currentDoc));
+      if (merged.profiles?.length) setLetterheadProfiles(merged.profiles.map(migrateSchoolSubUnit));
+      if (Array.isArray(merged.archive)) {
+        const validArchive = merged.archive.filter(
+          (item): item is LetterDocument => Boolean(item && item.templateId && item.letterhead)
+        );
+        setArchivedLetters(validArchive.map(hydrateLetterDoc));
+      }
+      showToast('success', 'Draf, arsip, dan profil kop berhasil disimpan ke Google Drive dan Spreadsheet.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sinkronisasi Google Drive gagal.';
       showToast('error', message);
