@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/google-drive-sync
+      - main
   pull_request:
     branches:
       - main
