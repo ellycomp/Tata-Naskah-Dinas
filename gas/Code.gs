@@ -99,15 +99,69 @@ function getBootstrapData() {
   const email = requireAuthorizedUser_();
   const ss = getDatabase_();
   const profiles = readJsonRows_(ss.getSheetByName('Letterheads'), 2);
-  const drafts = readJsonRows_(ss.getSheetByName('Drafts'), 3);
+  const draftRows = ss.getSheetByName('Drafts').getDataRange().getValues().slice(1);
+  const currentRow = draftRows.find(r => r[0] === '__CURRENT_DOC__');
+  const currentDoc = currentRow ? safeJsonParse_(currentRow[3]) : null;
+  const drafts = draftRows.filter(r => r[0] && r[0] !== '__CURRENT_DOC__')
+    .map(r => safeJsonParse_(r[3])).filter(Boolean);
   const archive = ss.getSheetByName('Archives').getDataRange().getValues().slice(1)
     .filter(r => r[0])
-    .map(r => ({
-      id: r[0], title: r[1], letterNumber: r[2], date: r[3],
-      kind: r[4], pdfFileId: r[5], jsonFileId: r[6], driveUrl: r[7],
-      createdAt: r[8], createdBy: r[9]
-    }));
-  return { email: email, profiles: profiles, drafts: drafts, archive: archive, status: getAppStatus() };
+    .map(r => {
+      let doc = null;
+      try { if (r[6]) doc = JSON.parse(DriveApp.getFileById(r[6]).getBlob().getDataAsString()); } catch (e) {}
+      return doc || {
+        id: r[0], templateName: r[1], letterNumber: r[2], dateString: r[3],
+        category: r[4], pdfFileId: r[5], jsonFileId: r[6], driveUrl: r[7],
+        updatedAt: r[8] ? new Date(r[8]).toISOString() : ''
+      };
+    });
+  return { email: email, currentDoc: currentDoc, profiles: profiles, drafts: drafts, archive: archive, status: getAppStatus() };
+}
+
+/**
+ * Sinkronisasi penuh workspace dari aplikasi React ke database pusat.
+ * Menulis data ke Spreadsheet dan menyimpan salinan JSON tiap surat di Drive.
+ */
+function syncWorkspace(snapshot) {
+  const email = requireAuthorizedUser_();
+  validateObject_(snapshot, 'Workspace');
+  if (!snapshot.currentDoc || !Array.isArray(snapshot.profiles) || !Array.isArray(snapshot.archive)) {
+    throw new Error('Struktur workspace tidak lengkap.');
+  }
+  const ss = getDatabase_();
+  const draftJson = JSON.stringify(snapshot.currentDoc);
+  upsertRowById_(ss.getSheetByName('Drafts'), '__CURRENT_DOC__', [
+    '__CURRENT_DOC__', 'Draf aktif', snapshot.currentDoc.letterNumber || '',
+    draftJson, '', new Date(), email
+  ]);
+
+  snapshot.profiles.forEach(profile => {
+    if (!profile || !profile.id) return;
+    upsertRowById_(ss.getSheetByName('Letterheads'), profile.id, [
+      profile.id, profile.profileName || profile.orgName || 'Profil kop',
+      JSON.stringify(profile), new Date()
+    ]);
+  });
+
+  const archiveRoot = getFolder_('03 ARSIP SURAT');
+  snapshot.archive.forEach(letter => {
+    if (!letter || !letter.id) return;
+    const year = String((letter.dateString || '').match(/20\\d{2}/)?.[0] || new Date().getFullYear());
+    const folder = findOrCreateFolder_(archiveRoot, year);
+    const jsonName = safeName_('DATA-' + letter.id) + '.json';
+    const jsonFile = upsertJsonFile_(folder, jsonName, JSON.stringify(letter));
+    upsertRowById_(ss.getSheetByName('Archives'), letter.id, [
+      letter.id, letter.templateName || letter.decreeTitle || 'Surat',
+      letter.letterNumber || '', letter.dateString || '', letter.category || '',
+      '', jsonFile.getId(), jsonFile.getUrl(), letter.updatedAt ? new Date(letter.updatedAt) : new Date(), email
+    ]);
+  });
+  logAction_(email, 'SYNC_WORKSPACE', '', 'profil=' + snapshot.profiles.length + '; arsip=' + snapshot.archive.length);
+  return getBootstrapData();
+}
+
+function safeJsonParse_(value) {
+  try { return JSON.parse(value); } catch (e) { return null; }
 }
 
 function saveDraft(letter) {
