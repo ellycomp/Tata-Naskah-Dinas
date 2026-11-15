@@ -6,7 +6,7 @@ import {defineConfig} from 'vite';
 export default defineConfig(() => {
   return {
     plugins: [react(), tailwindcss()],
-    resolve: {
+    build: {\n      cssCodeSplit: false,\n      rollupOptions: {\n        output: { inlineDynamicImports: true },\n      },\n    },\n    resolve: {
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
