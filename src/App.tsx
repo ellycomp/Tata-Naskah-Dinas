@@ -379,7 +379,7 @@ function TataNaskahWorkspace() {
       }
       return [entry, ...prev];
     });
-    showToast('success', 'Surat berhasil disimpan ke Arsip lokal. Gunakan Sinkronkan Drive untuk mencadangkannya.');
+    showToast('success', isDriveConnected ? 'Surat masuk arsip dan akan disimpan otomatis ke Google Drive.' : 'Surat masuk arsip pada perangkat ini. Hubungkan Google Drive melalui tombol Sinkronkan Drive agar tersimpan di cloud.');
   };
 
   const handleSaveLetterheadProfile = async (profile: LetterheadConfig) => {
@@ -390,7 +390,7 @@ function TataNaskahWorkspace() {
       return [profile, ...prev];
     });
     setCurrentDoc((prev) => ({ ...prev, letterhead: profile }));
-    showToast('success', `Profil kop "${profile.profileName}" disimpan secara lokal.`);
+    showToast('success', isDriveConnected ? `Profil kop "${profile.profileName}" akan disimpan otomatis ke Google Drive.` : `Profil kop "${profile.profileName}" tersimpan pada perangkat ini. Hubungkan Google Drive agar tersimpan di cloud.`);
   };
 
   const handleGoogleDriveSync = async () => {
