@@ -146,7 +146,7 @@ function syncWorkspace(snapshot) {
   const archiveRoot = getFolder_('03 ARSIP SURAT');
   snapshot.archive.forEach(letter => {
     if (!letter || !letter.id) return;
-    const year = String((letter.dateString || '').match(/20\\d{2}/)?.[0] || new Date().getFullYear());
+    const year = String((letter.dateString || '').match(/20\d{2}/)?.[0] || new Date().getFullYear());
     const folder = findOrCreateFolder_(archiveRoot, year);
     const jsonName = safeName_('DATA-' + letter.id) + '.json';
     const jsonFile = upsertJsonFile_(folder, jsonName, JSON.stringify(letter));
