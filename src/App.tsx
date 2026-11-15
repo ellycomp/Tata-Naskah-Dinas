@@ -19,19 +19,6 @@ import {
   User as UserIcon,
   CloudUpload,
 } from 'lucide-react';
-import { collection, onSnapshot, query, where } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
-import { db, handleFirestoreError, OperationType } from './firebase';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import {
-  deleteLetterFromFirestore,
-  deleteLetterheadFromFirestore,
-  fromFirestoreLetter,
-  fromFirestoreLetterhead,
-  sanitizeFirestoreId,
-  saveLetterheadToFirestore,
-  saveLetterToFirestore,
-} from './utils/firestoreSync';
 import {
   LETTERHEAD_PRESETS,
   LETTER_TEMPLATES,
@@ -226,54 +213,8 @@ function createInitialDoc(profiles: LetterheadConfig[]): LetterDocument {
   return firstTemplate.buildDocument(defaultKop);
 }
 
-function formatFirestoreToastError(err: unknown, fallback: string): string {
-  const rawMsg = err instanceof Error ? err.message : String(err);
-  let detailMsg = rawMsg;
-
-  try {
-    const parsed = JSON.parse(rawMsg) as { error?: string; operationType?: string; path?: string };
-    if (parsed && typeof parsed.error === 'string') {
-      detailMsg = parsed.error;
-    }
-  } catch {
-    // not JSON, keep rawMsg
-  }
-
-  if (detailMsg.includes('Free daily read units per project')) {
-    return `Kuota baca harian Firestore terlampaui. Tingkatkan paket di: https://console.firebase.google.com/project/${firebaseConfig.projectId}/firestore/databases/${firebaseConfig.firestoreDatabaseId}/data?openUpgradeDialog=true`;
-  }
-  if (detailMsg.includes('Quota exceeded') || detailMsg.includes('resource-exhausted')) {
-    return 'Kuota harian Firestore terlampaui. Kuota akan direset keesokan harinya.';
-  }
-  if (detailMsg.includes('Missing or insufficient permissions') || detailMsg.includes('permission-denied')) {
-    return `${fallback} (Akses ditolak aturan keamanan Firestore — pastikan login Google terverifikasi dan aturan terbaru aktif.)`;
-  }
-  if (detailMsg.includes('offline') || detailMsg.includes('unavailable') || detailMsg.includes('Failed to get document')) {
-    return `${fallback} (Koneksi ke layanan Cloud sedang terputus/offline.)`;
-  }
-  if (detailMsg.includes('invalid-argument') || detailMsg.includes('exceeds the maximum')) {
-    return `${fallback} (Ukuran gambar atau data melebihi batas dokumen Cloud.)`;
-  }
-  if (detailMsg && detailMsg !== fallback) {
-    const shortDetail = detailMsg.length > 140 ? `${detailMsg.slice(0, 140)}...` : detailMsg;
-    return `${fallback} (${shortDetail})`;
-  }
-  return fallback;
-}
-
-function TataNaskahWorkspace() {
-  const {
-    user,
-    authReady,
-    profileReady,
-    isSigningIn,
-    authError,
-    signInWithGoogle,
-    signOutUser,
-    clearAuthError,
-  } = useAuth();
-
-  const [activeView, setActiveView] = useState<AppView>('editor');
+hapus formatter Firestorefunction TataNaskahWorkspace() {
+hapus useAuth  const [activeView, setActiveView] = useState<AppView>('editor');
   const [letterheadProfiles, setLetterheadProfiles] = useState<LetterheadConfig[]>(
     loadInitialProfiles
   );
@@ -298,16 +239,6 @@ function TataNaskahWorkspace() {
   const [isVerifiedFromQr, setIsVerifiedFromQr] = useState(false);
 
   const toastTimerRef = useRef<number | null>(null);
-  const syncedLettersUidRef = useRef<string | null>(null);
-  const syncedProfilesUidRef = useRef<string | null>(null);
-  const kopSaveTimersRef = useRef<Record<string, number>>({});
-
-  useEffect(() => {
-    const timers = kopSaveTimersRef.current;
-    return () => {
-      Object.values(timers).forEach((t) => window.clearTimeout(t));
-    };
-  }, []);
 
   const showToast = (type: 'success' | 'error', message: string) => {
     setToast({ type, message });
@@ -315,132 +246,7 @@ function TataNaskahWorkspace() {
     toastTimerRef.current = window.setTimeout(() => setToast(null), 4000);
   };
 
-  useEffect(() => {
-    if (authError) {
-      showToast('error', authError);
-      clearAuthError();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authError]);
-
-  // Real-time Firestore sync when user is authenticated & verified
-  useEffect(() => {
-    if (!authReady || !profileReady || !user || !user.emailVerified) {
-      syncedLettersUidRef.current = null;
-      syncedProfilesUidRef.current = null;
-      return;
-    }
-
-    const uid = sanitizeFirestoreId(user.uid, 'user');
-    const lettersPath = `users/${uid}/letters`;
-    const letterheadsPath = `users/${uid}/letterheads`;
-
-    const lettersQuery = query(collection(db, lettersPath), where('ownerId', '==', uid));
-    const unsubLetters = onSnapshot(
-      lettersQuery,
-      (snapshot) => {
-        const remoteLetters = snapshot.docs.map((d) =>
-          hydrateLetterDoc(fromFirestoreLetter(d.data() as Record<string, unknown>))
-        );
-        remoteLetters.sort((a, b) =>
-          (b.updatedAt || '').localeCompare(a.updatedAt || '')
-        );
-
-        // One-time upload of offline local archive items not yet present in Firestore
-        if (syncedLettersUidRef.current !== uid) {
-          syncedLettersUidRef.current = uid;
-          const remoteIds = new Set(remoteLetters.map((item) => item.id));
-          const localOnly = loadInitialArchive().filter(
-            (localItem) => !remoteIds.has(sanitizeFirestoreId(localItem.id, 'arch'))
-          );
-          if (localOnly.length > 0) {
-            const hydratedLocalOnly = localOnly.map(hydrateLetterDoc);
-            void Promise.all(
-              hydratedLocalOnly.map((item) => saveLetterToFirestore(uid, item))
-            ).catch((err) => {
-              showToast(
-                'error',
-                formatFirestoreToastError(err, 'Sebagian arsip lokal gagal disinkronkan.')
-              );
-            });
-            const merged = [...hydratedLocalOnly, ...remoteLetters];
-            merged.sort((a, b) => (b.updatedAt || '').localeCompare(a.updatedAt || ''));
-            setArchivedLetters(merged);
-            return;
-          }
-        }
-
-        setArchivedLetters(remoteLetters);
-      },
-      (error) => {
-        try {
-          handleFirestoreError(error, OperationType.LIST, lettersPath);
-        } catch (err) {
-          showToast(
-            'error',
-            formatFirestoreToastError(err, 'Gagal memuat arsip surat dari Cloud.')
-          );
-        }
-      }
-    );
-
-    const kopQuery = query(collection(db, letterheadsPath), where('ownerId', '==', uid));
-    const unsubKops = onSnapshot(
-      kopQuery,
-      (snapshot) => {
-        const remoteProfiles = snapshot.docs.map((d) =>
-          migrateSchoolSubUnit(fromFirestoreLetterhead(d.data() as Record<string, unknown>))
-        );
-
-        if (syncedProfilesUidRef.current !== uid) {
-          syncedProfilesUidRef.current = uid;
-          const remoteKopIds = new Set(remoteProfiles.map((p) => p.id));
-          const localCustom = loadInitialProfiles().filter(
-            (p) =>
-              p.id.startsWith('kop-custom-') &&
-              !remoteKopIds.has(sanitizeFirestoreId(p.id, 'kop'))
-          );
-          if (localCustom.length > 0) {
-            void Promise.all(
-              localCustom.map((p) => saveLetterheadToFirestore(uid, p))
-            ).catch((err) => {
-              showToast(
-                'error',
-                formatFirestoreToastError(err, 'Sebagian profil kop gagal disinkronkan.')
-              );
-            });
-          }
-        }
-
-        const remoteById = new Map(remoteProfiles.map((p) => [p.id, p]));
-        const mergedPresets = LETTERHEAD_PRESETS.map(
-          (preset) => remoteById.get(preset.id) || preset
-        );
-        const customRemote = remoteProfiles.filter(
-          (p) => !LETTERHEAD_PRESETS.some((preset) => preset.id === p.id)
-        );
-        setLetterheadProfiles([...customRemote, ...mergedPresets]);
-      },
-      (error) => {
-        try {
-          handleFirestoreError(error, OperationType.LIST, letterheadsPath);
-        } catch (err) {
-          showToast(
-            'error',
-            formatFirestoreToastError(err, 'Gagal memuat profil kop dari Cloud.')
-          );
-        }
-      }
-    );
-
-    return () => {
-      unsubLetters();
-      unsubKops();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authReady, profileReady, user]);
-
-  // Detect ?surat=... verification link when opened from QR scan
+hapus listener Firestore  // Detect ?surat=... verification link when opened from QR scan
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
@@ -575,21 +381,7 @@ function TataNaskahWorkspace() {
       }
       return [entry, ...prev];
     });
-    if (user && user.emailVerified) {
-      try {
-        await saveLetterToFirestore(user.uid, entry);
-        showToast('success', 'Surat berhasil disimpan & disinkronkan ke Cloud.');
-      } catch (err) {
-        showToast(
-          'error',
-          formatFirestoreToastError(err, 'Tersimpan lokal, gagal sinkron ke Cloud.')
-        );
-      }
-    } else if (user && !user.emailVerified) {
-      showToast('error', 'Surat tersimpan lokal. Verifikasi email akun Google Anda untuk sinkronisasi Cloud.');
-    } else {
-      showToast('success', 'Surat berhasil disimpan ke Arsip lokal.');
-    }
+    showToast('success', 'Surat berhasil disimpan ke Arsip lokal. Gunakan Sinkronkan Drive untuk mencadangkannya.');
   };
 
   const handleSaveLetterheadProfile = async (profile: LetterheadConfig) => {
@@ -600,34 +392,18 @@ function TataNaskahWorkspace() {
       return [profile, ...prev];
     });
     setCurrentDoc((prev) => ({ ...prev, letterhead: profile }));
-    if (user && user.emailVerified) {
-      try {
-        await saveLetterheadToFirestore(user.uid, profile);
-        showToast('success', `Profil kop "${profile.profileName}" disimpan ke Cloud.`);
-      } catch (err) {
-        showToast(
-          'error',
-          formatFirestoreToastError(err, 'Profil kop disimpan lokal, gagal sinkron ke Cloud.')
-        );
-      }
-    } else {
-      showToast('success', `Profil kop "${profile.profileName}" disimpan.`);
-    }
+    showToast('success', `Profil kop "${profile.profileName}" disimpan secara lokal.`);
   };
 
   const handleGoogleDriveSync = async () => {
-    if (!user?.email || !user.emailVerified) {
-      showToast('error', 'Masuk dengan akun Google dan verifikasi email terlebih dahulu.');
-      return;
-    }
     setIsDriveSyncing(true);
     try {
       const merged = await syncWorkspaceWithGoogleDrive(
-        firebaseConfig.googleDriveClientId,
+        '199915173450-re9rv4mu0a0sp7fhj2aagjrh1urqqing.apps.googleusercontent.com',
         {
           schemaVersion: 1,
           updatedAt: new Date().toISOString(),
-          ownerEmail: user.email,
+          ownerEmail: '',
           currentDoc,
           profiles: letterheadProfiles,
           archive: archivedLetters,
@@ -636,21 +412,7 @@ function TataNaskahWorkspace() {
       setCurrentDoc(merged.currentDoc);
       setLetterheadProfiles(merged.profiles);
       setArchivedLetters(merged.archive);
-
-      // Keep Firestore and Drive aligned during this first migration phase.
-      const cloudWrites = await Promise.allSettled([
-        ...merged.archive.map((item) => saveLetterToFirestore(user.uid, item)),
-        ...merged.profiles
-          .filter((profile) => profile.id.startsWith('kop-custom-'))
-          .map((profile) => saveLetterheadToFirestore(user.uid, profile)),
-      ]);
-      const failedWrites = cloudWrites.filter((result) => result.status === 'rejected').length;
-      showToast(
-        failedWrites > 0 ? 'error' : 'success',
-        failedWrites > 0
-          ? 'Cadangan Google Drive berhasil disinkronkan, tetapi sebagian data belum tersalin ke Firestore.'
-          : 'Arsip, profil kop, dan draf berhasil disinkronkan dengan Google Drive.'
-      );
+      showToast('success', `Draf, ${merged.archive.length} arsip, dan ${merged.profiles.length} profil kop berhasil disinkronkan dengan Google Drive.`);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Sinkronisasi Google Drive gagal.';
       showToast('error', message);
@@ -736,54 +498,15 @@ function TataNaskahWorkspace() {
 
         {/* Zone 3: Primary action + Google Account sync */}
         <div className="flex items-center gap-2.5 shrink-0">
-          {user ? (
-            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50">
-              {user.photoURL ? (
-                <img
-                  src={user.photoURL}
-                  alt={user.displayName || 'Akun'}
-                  referrerPolicy="no-referrer"
-                  className="w-5 h-5 rounded-full object-cover shrink-0"
-                />
-              ) : (
-                <UserIcon className="w-4 h-4 text-slate-600 shrink-0" />
-              )}
-              <span className="hidden sm:inline text-xs font-medium text-slate-700 max-w-[120px] truncate">
-                {user.displayName || user.email}
-              </span>
-              <button
-                type="button"
-                onClick={async () => {
-                  await signOutUser();
-                  showToast('success', 'Berhasil keluar dari akun Google.');
-                }}
-                title="Keluar akun Google"
-                className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-red-600 cursor-pointer whitespace-nowrap"
-              >
-                <LogOut className="w-3.5 h-3.5" />
-                <span className="hidden lg:inline">Keluar</span>
-              </button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              disabled={isSigningIn || !authReady}
-              onClick={async () => {
-                const ok = await signInWithGoogle();
-                if (ok) showToast('success', 'Berhasil masuk & menyinkronkan dengan Google.');
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-60 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              {isSigningIn ? 'Masuk...' : 'Masuk Google'}
-            </button>
-          )}
+          <span className="hidden sm:inline text-xs text-slate-500 whitespace-nowrap">
+            Penyimpanan lokal
+          </span>
 
           <button
             type="button"
             onClick={handleGoogleDriveSync}
-            disabled={!user || !user.emailVerified || isDriveSyncing}
-            title={!user ? 'Masuk dengan Google terlebih dahulu' : 'Cadangkan dan sinkronkan data dengan Google Drive'}
+            disabled={isDriveSyncing}
+            title="Cadangkan dan sinkronkan data dengan Google Drive"
             className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 disabled:opacity-50 rounded-lg transition-colors whitespace-nowrap shrink-0 cursor-pointer"
           >
             <CloudUpload className="w-3.5 h-3.5" />
@@ -1273,20 +996,7 @@ function TataNaskahWorkspace() {
             onAddProfile={async (profile) => {
               recordProfileUpdated(profile.id);
               setLetterheadProfiles((prev) => [profile, ...prev]);
-              if (user && user.emailVerified) {
-                try {
-                  await saveLetterheadToFirestore(user.uid, profile);
-                  showToast('success', 'Profil kop baru dibuat & disimpan ke Cloud.');
-                  return;
-                } catch (err) {
-                  showToast(
-                    'error',
-                    formatFirestoreToastError(err, 'Profil kop dibuat lokal, gagal sinkron ke Cloud.')
-                  );
-                  return;
-                }
-              }
-              showToast('success', 'Profil kop baru dibuat.');
+              showToast('success', 'Profil kop baru dibuat dan disimpan secara lokal.');
             }}
             onUpdateProfile={(updated) => {
               recordProfileUpdated(updated.id);
@@ -1296,33 +1006,10 @@ function TataNaskahWorkspace() {
               if (currentDoc.letterhead.id === updated.id) {
                 setCurrentDoc((prev) => ({ ...prev, letterhead: { ...updated } }));
               }
-              if (user && user.emailVerified) {
-                const prevTimer = kopSaveTimersRef.current[updated.id];
-                if (prevTimer) window.clearTimeout(prevTimer);
-                kopSaveTimersRef.current[updated.id] = window.setTimeout(() => {
-                  delete kopSaveTimersRef.current[updated.id];
-                  void saveLetterheadToFirestore(user.uid, updated).catch((err) => {
-                    showToast(
-                      'error',
-                      formatFirestoreToastError(err, 'Gagal menyimpan perubahan kop ke Cloud.')
-                    );
-                  });
-                }, 600);
-              }
             }}
             onDeleteProfile={async (id) => {
               recordDeletedProfile(id);
               setLetterheadProfiles((prev) => prev.filter((p) => p.id !== id));
-              if (user && user.emailVerified) {
-                try {
-                  await deleteLetterheadFromFirestore(user.uid, id);
-                } catch (err) {
-                  showToast(
-                    'error',
-                    formatFirestoreToastError(err, 'Gagal menghapus profil kop dari Cloud.')
-                  );
-                }
-              }
               showToast('success', 'Profil kop dihapus.');
             }}
           />
@@ -1333,12 +1020,6 @@ function TataNaskahWorkspace() {
         <div className="flex-1 overflow-y-auto">
           <ArchiveView
             archivedLetters={archivedLetters}
-            isSignedIn={Boolean(user && user.emailVerified)}
-            userEmail={user?.email || null}
-            onSignIn={async () => {
-              const ok = await signInWithGoogle();
-              if (ok) showToast('success', 'Berhasil masuk & menyinkronkan arsip ke Google.');
-            }}
             onLoadLetter={(doc) => {
               setCurrentDoc(hydrateLetterDoc(doc));
               setActiveView('editor');
@@ -1356,34 +1037,11 @@ function TataNaskahWorkspace() {
                 updatedAt: new Date().toISOString(),
               };
               setArchivedLetters((prev) => [copy, ...prev]);
-              if (user && user.emailVerified) {
-                try {
-                  await saveLetterToFirestore(user.uid, copy);
-                  showToast('success', 'Surat berhasil diduplikasi & disimpan ke Cloud.');
-                  return;
-                } catch (err) {
-                  showToast(
-                    'error',
-                    formatFirestoreToastError(err, 'Duplikasi lokal berhasil, gagal sinkron ke Cloud.')
-                  );
-                  return;
-                }
-              }
-              showToast('success', 'Surat berhasil diduplikasi di arsip.');
+              showToast('success', 'Surat berhasil diduplikasi di arsip lokal.');
             }}
             onDeleteLetter={async (id) => {
               recordDeletedArchive(id);
               setArchivedLetters((prev) => prev.filter((d) => d.id !== id));
-              if (user && user.emailVerified) {
-                try {
-                  await deleteLetterFromFirestore(user.uid, id);
-                } catch (err) {
-                  showToast(
-                    'error',
-                    formatFirestoreToastError(err, 'Gagal menghapus surat dari Cloud.')
-                  );
-                }
-              }
               showToast('success', 'Surat dihapus dari arsip.');
             }}
             onCreateNew={() => setActiveView('editor')}
@@ -1410,9 +1068,5 @@ function TataNaskahWorkspace() {
 }
 
 export default function App() {
-  return (
-    <AuthProvider>
-      <TataNaskahWorkspace />
-    </AuthProvider>
-  );
+  return <TataNaskahWorkspace />;
 }
