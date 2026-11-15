@@ -154,7 +154,9 @@ function mergeById<T extends { id: string }>(local: T[], cloud: T[]): T[] {
   for (const item of cloud) merged.set(item.id, item);
   for (const item of local) {
     const previous = merged.get(item.id);
-    const itemUpdatedAt = (item as T & { updatedAt?: string }).updatedAt || '';\n    const previousUpdatedAt = (previous as (T & { updatedAt?: string }) | undefined)?.updatedAt || '';\n    if (!previous || itemUpdatedAt >= previousUpdatedAt) {
+    const itemUpdatedAt = (item as T & { updatedAt?: string }).updatedAt || '';
+    const previousUpdatedAt = (previous as (T & { updatedAt?: string }) | undefined)?.updatedAt || '';
+    if (!previous || itemUpdatedAt >= previousUpdatedAt) {
       merged.set(item.id, item);
     }
   }
