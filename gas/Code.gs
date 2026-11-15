@@ -98,7 +98,7 @@ function addSchoolUser(email, nama, jabatan, role) {
   );
   if (!admin) throw new Error('Hanya administrator yang dapat menambahkan pengguna.');
   const targetEmail = String(email || '').trim().toLowerCase();
-  if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(targetEmail)) throw new Error('Alamat email tidak valid.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) throw new Error('Alamat email tidak valid.');
   const accessRole = ['admin', 'editor', 'pembaca'].includes(String(role)) ? String(role) : 'editor';
   const folderId = PropertiesService.getScriptProperties().getProperty('TN_ROOT_FOLDER_ID');
   const root = DriveApp.getFolderById(folderId);
