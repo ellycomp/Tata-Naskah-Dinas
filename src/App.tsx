@@ -52,7 +52,7 @@ import { LetterheadManagerView } from './components/LetterheadManagerView';
 import { ArchiveView } from './components/ArchiveView';
 import { QrSignaturePanel } from './components/QrSignaturePanel';
 import { exportLetterToPdf } from './utils/pdfExport';
-import { syncWorkspaceWithGoogleDrive } from './utils/googleDriveSync';
+import { recordDeletedArchive, recordDeletedProfile, recordProfileUpdated, syncWorkspaceWithGoogleDrive } from './utils/googleDriveSync';
 import {
   decodeLetterFromShareToken,
   extractSuratTokenFromInput,
@@ -593,6 +593,7 @@ function TataNaskahWorkspace() {
   };
 
   const handleSaveLetterheadProfile = async (profile: LetterheadConfig) => {
+    recordProfileUpdated(profile.id);
     setLetterheadProfiles((prev) => {
       const exists = prev.some((p) => p.id === profile.id);
       if (exists) return prev.map((p) => (p.id === profile.id ? profile : p));
@@ -1270,6 +1271,7 @@ function TataNaskahWorkspace() {
               showToast('success', `Kop "${profile.profileName}" diterapkan pada surat.`);
             }}
             onAddProfile={async (profile) => {
+              recordProfileUpdated(profile.id);
               setLetterheadProfiles((prev) => [profile, ...prev]);
               if (user && user.emailVerified) {
                 try {
@@ -1287,6 +1289,7 @@ function TataNaskahWorkspace() {
               showToast('success', 'Profil kop baru dibuat.');
             }}
             onUpdateProfile={(updated) => {
+              recordProfileUpdated(updated.id);
               setLetterheadProfiles((prev) =>
                 prev.map((p) => (p.id === updated.id ? updated : p))
               );
@@ -1308,6 +1311,7 @@ function TataNaskahWorkspace() {
               }
             }}
             onDeleteProfile={async (id) => {
+              recordDeletedProfile(id);
               setLetterheadProfiles((prev) => prev.filter((p) => p.id !== id));
               if (user && user.emailVerified) {
                 try {
@@ -1368,6 +1372,7 @@ function TataNaskahWorkspace() {
               showToast('success', 'Surat berhasil diduplikasi di arsip.');
             }}
             onDeleteLetter={async (id) => {
+              recordDeletedArchive(id);
               setArchivedLetters((prev) => prev.filter((d) => d.id !== id));
               if (user && user.emailVerified) {
                 try {
