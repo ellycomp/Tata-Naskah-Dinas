@@ -609,6 +609,16 @@ function TataNaskahWorkspace() {
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
+              onClick={handleGoogleDriveSync}
+              disabled={isDriveSyncing}
+              title="Sinkronkan data dengan Google Drive"
+              className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-white bg-[#1e3a5f] disabled:opacity-60 rounded cursor-pointer whitespace-nowrap"
+            >
+              <CloudUpload className="w-3.5 h-3.5" />
+              {isDriveSyncing ? 'Menyimpan...' : 'Sinkronkan Drive'}
+            </button>
+            <button
+              type="button"
               onClick={() => setShowSidebarMobile((v) => !v)}
               className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-slate-700 bg-slate-100 rounded cursor-pointer whitespace-nowrap"
             >
