@@ -58,7 +58,7 @@ function loadGoogleIdentityServices(): Promise<void> {
   return scriptPromise;
 }
 
-async function requestDriveToken(clientId: string, expectedEmail: string): Promise<string> {
+async function requestDriveToken(clientId: string, expectedEmail: string, interactive = true): Promise<string> {
   if (accessToken && tokenAccountEmail.toLowerCase() === expectedEmail.toLowerCase() && Date.now() < tokenExpiresAt - 60_000) return accessToken;
   accessToken = null;
   tokenExpiresAt = 0;
@@ -86,7 +86,7 @@ async function requestDriveToken(clientId: string, expectedEmail: string): Promi
       },
       error_callback: (error) => reject(new Error(error.message || 'Jendela izin Google ditutup atau gagal dibuka.')),
     });
-    client.requestAccessToken({ prompt: 'select_account' });
+    client.requestAccessToken({ prompt: interactive ? 'select_account' : '' });
   });
 }
 
@@ -139,11 +139,16 @@ async function uploadJson(
   const url = fileId
     ? `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(fileId)}?uploadType=multipart`
     : 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
-  await driveFetch(url, token, {
+  const response = await driveFetch(url, token, {
     method: fileId ? 'PATCH' : 'POST',
     headers: { 'Content-Type': `multipart/related; boundary=${boundary}` },
     body,
   });
+  const saved = (await response.json()) as { id?: string };
+  const verifiedId = fileId || saved.id;
+  if (!verifiedId) throw new Error('Google Drive tidak mengembalikan ID file setelah penyimpanan.');
+  // Verify the file can immediately be read back before reporting success.
+  await downloadJson(token, verifiedId);
 }
 
 async function downloadJson(token: string, fileId: string): Promise<DriveWorkspaceSnapshot> {
@@ -174,7 +179,8 @@ function mergeById<T extends { id: string; updatedAt?: string }>(local: T[], clo
 
 export async function syncWorkspaceWithGoogleDrive(
   clientId: string,
-  snapshot: DriveWorkspaceSnapshot
+  snapshot: DriveWorkspaceSnapshot,
+  interactive = true
 ): Promise<DriveWorkspaceSnapshot> {
   if (!clientId) throw new Error('Google Drive Client ID belum diatur pada konfigurasi aplikasi.');
   const tombstones = readTombstones();
@@ -184,7 +190,7 @@ export async function syncWorkspaceWithGoogleDrive(
     deletedArchiveIds: [...new Set([...(snapshot.deletedArchiveIds || []), ...tombstones.archive])],
     deletedProfileIds: [...new Set([...(snapshot.deletedProfileIds || []), ...tombstones.profiles])],
   };
-  const token = await requestDriveToken(clientId, snapshot.ownerEmail);
+  const token = await requestDriveToken(clientId, snapshot.ownerEmail, interactive);
 
   // Ensure the OAuth account is the same Google account used by the TataNaskah workspace.
   const identityResponse = await driveFetch(
@@ -203,7 +209,10 @@ export async function syncWorkspaceWithGoogleDrive(
     throw new Error(`Akun Drive (${identity.email}) berbeda dari akun TataNaskah (${snapshot.ownerEmail}). Pilih akun Google yang sama.`);
   }
 
-  if (identity.email) tokenAccountEmail = identity.email;
+  if (identity.email) {
+    tokenAccountEmail = identity.email;
+    snapshot = { ...snapshot, ownerEmail: identity.email };
+  }
 
   const file = await getDriveFile(token);
   if (!file) {
