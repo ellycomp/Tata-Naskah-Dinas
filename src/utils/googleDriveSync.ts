@@ -24,6 +24,9 @@ export interface DriveWorkspaceSnapshot {
   currentDoc: LetterDocument;
   profiles: LetterheadConfig[];
   archive: LetterDocument[];
+  profileUpdatedAt?: Record<string, string>;
+  deletedArchiveIds?: string[];
+  deletedProfileIds?: string[];
 }
 
 const BACKUP_FILE_NAME = 'TataNaskah-Backup.json';
@@ -31,6 +34,7 @@ const DRIVE_SCOPE = 'openid email https://www.googleapis.com/auth/drive.file';
 let scriptPromise: Promise<void> | null = null;
 let accessToken: string | null = null;
 let tokenExpiresAt = 0;
+let tokenAccountEmail = '';
 
 function loadGoogleIdentityServices(): Promise<void> {
   if (window.google?.accounts?.oauth2) return Promise.resolve();
@@ -54,8 +58,11 @@ function loadGoogleIdentityServices(): Promise<void> {
   return scriptPromise;
 }
 
-async function requestDriveToken(clientId: string): Promise<string> {
-  if (accessToken && Date.now() < tokenExpiresAt - 60_000) return accessToken;
+async function requestDriveToken(clientId: string, expectedEmail: string): Promise<string> {
+  if (accessToken && tokenAccountEmail.toLowerCase() === expectedEmail.toLowerCase() && Date.now() < tokenExpiresAt - 60_000) return accessToken;
+  accessToken = null;
+  tokenExpiresAt = 0;
+  tokenAccountEmail = '';
   await loadGoogleIdentityServices();
 
   return new Promise((resolve, reject) => {
@@ -78,7 +85,7 @@ async function requestDriveToken(clientId: string): Promise<string> {
       },
       error_callback: (error) => reject(new Error(error.message || 'Jendela izin Google ditutup atau gagal dibuka.')),
     });
-    client.requestAccessToken({ prompt: 'consent' });
+    client.requestAccessToken({ prompt: 'select_account' });
   });
 }
 
@@ -95,6 +102,7 @@ async function driveFetch(url: string, token: string, init: RequestInit = {}): P
     if (response.status === 401) {
       accessToken = null;
       tokenExpiresAt = 0;
+      tokenAccountEmail = '';
     }
     throw new Error(`Google Drive: ${response.status} ${response.statusText}${detail ? ` — ${detail.slice(0, 240)}` : ''}`);
   }
@@ -149,13 +157,13 @@ async function downloadJson(token: string, fileId: string): Promise<DriveWorkspa
   return value as DriveWorkspaceSnapshot;
 }
 
-function mergeById<T extends { id: string }>(local: T[], cloud: T[]): T[] {
+function mergeById<T extends { id: string }>(local: T[], cloud: T[], timestamps: Record<string, string> = {}): T[] {
   const merged = new Map<string, T>();
   for (const item of cloud) merged.set(item.id, item);
   for (const item of local) {
     const previous = merged.get(item.id);
-    const itemUpdatedAt = (item as T & { updatedAt?: string }).updatedAt || '';
-    const previousUpdatedAt = (previous as (T & { updatedAt?: string }) | undefined)?.updatedAt || '';
+    const itemUpdatedAt = (item as T & { updatedAt?: string }).updatedAt || timestamps[item.id] || '';
+    const previousUpdatedAt = (previous as (T & { updatedAt?: string }) | undefined)?.updatedAt || timestamps[item.id] || '';
     if (!previous || itemUpdatedAt >= previousUpdatedAt) {
       merged.set(item.id, item);
     }
@@ -168,7 +176,13 @@ export async function syncWorkspaceWithGoogleDrive(
   snapshot: DriveWorkspaceSnapshot
 ): Promise<DriveWorkspaceSnapshot> {
   if (!clientId) throw new Error('Google Drive Client ID belum diatur pada konfigurasi aplikasi.');
-  const token = await requestDriveToken(clientId);
+  const tombstones = readTombstones();
+  snapshot = {
+    ...snapshot,
+    deletedArchiveIds: [...new Set([...(snapshot.deletedArchiveIds || []), ...tombstones.archive])],
+    deletedProfileIds: [...new Set([...(snapshot.deletedProfileIds || []), ...tombstones.profiles])],
+  };
+  const token = await requestDriveToken(clientId, snapshot.ownerEmail);
 
   // Ensure the OAuth account is the same Google account used by the TataNaskah workspace.
   const identityResponse = await driveFetch(
@@ -191,8 +205,13 @@ export async function syncWorkspaceWithGoogleDrive(
   }
 
   const cloud = await downloadJson(token, file.id);
-  const mergedProfiles = mergeById(snapshot.profiles, cloud.profiles);
-  const mergedArchive = mergeById(snapshot.archive, cloud.archive);
+  const mergedProfileUpdatedAt = { ...(cloud.profileUpdatedAt || {}), ...(snapshot.profileUpdatedAt || {}) };
+  const mergedDeletedArchiveIds = [...new Set([...(cloud.deletedArchiveIds || []), ...(snapshot.deletedArchiveIds || [])])];
+  const mergedDeletedProfileIds = [...new Set([...(cloud.deletedProfileIds || []), ...(snapshot.deletedProfileIds || [])])];
+  const deletedArchive = new Set(mergedDeletedArchiveIds);
+  const deletedProfiles = new Set(mergedDeletedProfileIds);
+  const mergedProfiles = mergeById(snapshot.profiles, cloud.profiles, mergedProfileUpdatedAt).filter((item) => !deletedProfiles.has(item.id));
+  const mergedArchive = mergeById(snapshot.archive, cloud.archive).filter((item) => !deletedArchive.has(item.id));
   const mergedDoc =
     (snapshot.currentDoc.updatedAt || '') >= (cloud.currentDoc?.updatedAt || '')
       ? snapshot.currentDoc
@@ -205,12 +224,39 @@ export async function syncWorkspaceWithGoogleDrive(
     currentDoc: mergedDoc,
     profiles: mergedProfiles,
     archive: mergedArchive,
+    profileUpdatedAt: mergedProfileUpdatedAt,
+    deletedArchiveIds: mergedDeletedArchiveIds,
+    deletedProfileIds: mergedDeletedProfileIds,
   };
   await uploadJson(token, file.id, merged);
   return merged;
 }
 
+const TOMBSTONE_KEY = 'tatanaskah-drive-tombstones-v1';
+
+function readTombstones(): { archive: string[]; profiles: string[] } {
+  try {
+    const value = JSON.parse(localStorage.getItem(TOMBSTONE_KEY) || '{}') as { archive?: unknown; profiles?: unknown };
+    return {
+      archive: Array.isArray(value.archive) ? value.archive.filter((id): id is string => typeof id === 'string') : [],
+      profiles: Array.isArray(value.profiles) ? value.profiles.filter((id): id is string => typeof id === 'string') : [],
+    };
+  } catch {
+    return { archive: [], profiles: [] };
+  }
+}
+
+function recordTombstone(kind: 'archive' | 'profiles', id: string): void {
+  const current = readTombstones();
+  if (!current[kind].includes(id)) current[kind].push(id);
+  localStorage.setItem(TOMBSTONE_KEY, JSON.stringify(current));
+}
+
+export function recordDeletedArchive(id: string): void { recordTombstone('archive', id); }
+export function recordDeletedProfile(id: string): void { recordTombstone('profiles', id); }
+
 export function disconnectGoogleDrive(): void {
   accessToken = null;
   tokenExpiresAt = 0;
+  tokenAccountEmail = '';
 }
