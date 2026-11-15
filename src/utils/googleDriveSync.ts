@@ -197,8 +197,13 @@ export async function syncWorkspaceWithGoogleDrive(
     identity.email &&
     identity.email.toLowerCase() !== snapshot.ownerEmail.toLowerCase()
   ) {
+    accessToken = null;
+    tokenExpiresAt = 0;
+    tokenAccountEmail = '';
     throw new Error(`Akun Drive (${identity.email}) berbeda dari akun TataNaskah (${snapshot.ownerEmail}). Pilih akun Google yang sama.`);
   }
+
+  if (identity.email) tokenAccountEmail = identity.email;
 
   const file = await getDriveFile(token);
   if (!file) {
