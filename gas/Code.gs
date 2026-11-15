@@ -153,7 +153,7 @@ function getBootstrapData() {
  * Menulis data ke Spreadsheet dan menyimpan salinan JSON tiap surat di Drive.
  */
 function syncWorkspace(snapshot) {
-  const email = requireAuthorizedUser_();
+  const email = requireEditorUser_();
   validateObject_(snapshot, 'Workspace');
   if (!snapshot.currentDoc || !Array.isArray(snapshot.profiles) || !Array.isArray(snapshot.archive)) {
     throw new Error('Struktur workspace tidak lengkap.');
@@ -195,7 +195,7 @@ function safeJsonParse_(value) {
 }
 
 function saveDraft(letter) {
-  const email = requireAuthorizedUser_();
+  const email = requireEditorUser_();
   validateObject_(letter, 'Data surat');
   if (!letter.id) letter.id = Utilities.getUuid();
   const ss = getDatabase_();
@@ -212,7 +212,7 @@ function saveDraft(letter) {
 }
 
 function saveLetterhead(profile) {
-  const email = requireAuthorizedUser_();
+  const email = requireEditorUser_();
   validateObject_(profile, 'Profil kop surat');
   if (!profile.id) throw new Error('ID profil kop surat wajib diisi.');
   const ss = getDatabase_();
@@ -229,7 +229,7 @@ function saveLetterhead(profile) {
  * pdfBase64 harus berupa base64 murni (tanpa awalan data:application/pdf;base64,).
  */
 function archiveLetter(payload) {
-  const email = requireAuthorizedUser_();
+  const email = requireEditorUser_();
   if (!payload || typeof payload !== 'object' || !payload.letter || typeof payload.pdfBase64 !== 'string') {
     throw new Error('Data surat dan PDF wajib disertakan.');
   }
@@ -260,7 +260,7 @@ function archiveLetter(payload) {
 }
 
 function deleteArchive(archiveId) {
-  const email = requireAuthorizedUser_();
+  const email = requireEditorUser_();
   if (!archiveId) throw new Error('ID arsip wajib diisi.');
   const sh = getDatabase_().getSheetByName('Archives');
   const values = sh.getDataRange().getValues();
@@ -280,7 +280,7 @@ function deleteArchive(archiveId) {
 }
 
 function getNextLetterNumber(counterKey) {
-  requireAuthorizedUser_();
+  requireEditorUser_();
   if (!counterKey || !/^[A-Za-z0-9_\-]{1,80}$/.test(counterKey)) throw new Error('Kunci penomoran tidak valid.');
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
@@ -310,6 +310,17 @@ function requireAuthorizedUser_() {
   const rows = sh.getDataRange().getValues().slice(1);
   const user = rows.find(r => String(r[0]).trim().toLowerCase() === email && (r[4] === true || String(r[4]).toLowerCase() === 'true'));
   if (!user) throw new Error('Akun ' + email + ' belum terdaftar atau dinonaktifkan. Hubungi administrator SIT Qudwah.');
+  return email;
+}
+
+function requireEditorUser_() {
+  const email = requireAuthorizedUser_();
+  const rows = getDatabase_().getSheetByName('Users').getDataRange().getValues().slice(1);
+  const user = rows.find(r => String(r[0]).trim().toLowerCase() === email);
+  const role = user ? String(user[3] || '').toLowerCase() : '';
+  if (!['admin', 'editor'].includes(role)) {
+    throw new Error('Akun ini hanya memiliki akses pembaca. Hubungi administrator untuk meminta izin edit.');
+  }
   return email;
 }
 
