@@ -158,13 +158,13 @@ async function downloadJson(token: string, fileId: string): Promise<DriveWorkspa
   return value as DriveWorkspaceSnapshot;
 }
 
-function mergeById<T extends { id: string }>(local: T[], cloud: T[], timestamps: Record<string, string> = {}): T[] {
+function mergeById<T extends { id: string; updatedAt?: string }>(local: T[], cloud: T[]): T[] {
   const merged = new Map<string, T>();
   for (const item of cloud) merged.set(item.id, item);
   for (const item of local) {
     const previous = merged.get(item.id);
-    const itemUpdatedAt = (item as T & { updatedAt?: string }).updatedAt || timestamps[item.id] || '';
-    const previousUpdatedAt = (previous as (T & { updatedAt?: string }) | undefined)?.updatedAt || timestamps[item.id] || '';
+    const itemUpdatedAt = item.updatedAt || '';
+    const previousUpdatedAt = previous?.updatedAt || '';
     if (!previous || itemUpdatedAt >= previousUpdatedAt) {
       merged.set(item.id, item);
     }
@@ -207,12 +207,25 @@ export async function syncWorkspaceWithGoogleDrive(
   }
 
   const cloud = await downloadJson(token, file.id);
-  const mergedProfileUpdatedAt = { ...(cloud.profileUpdatedAt || {}), ...readProfileTimestamps(), ...(snapshot.profileUpdatedAt || {}) };
+  const localProfileTimes = { ...readProfileTimestamps(), ...(snapshot.profileUpdatedAt || {}) };
+  const cloudProfileTimes = cloud.profileUpdatedAt || {};
+  const mergedProfileUpdatedAt: Record<string, string> = {};
+  for (const id of new Set([...Object.keys(localProfileTimes), ...Object.keys(cloudProfileTimes)])) {
+    mergedProfileUpdatedAt[id] = (localProfileTimes[id] || '') >= (cloudProfileTimes[id] || '') ? (localProfileTimes[id] || '') : (cloudProfileTimes[id] || '');
+  }
   const mergedDeletedArchiveIds = [...new Set([...(cloud.deletedArchiveIds || []), ...(snapshot.deletedArchiveIds || [])])];
   const mergedDeletedProfileIds = [...new Set([...(cloud.deletedProfileIds || []), ...(snapshot.deletedProfileIds || [])])];
   const deletedArchive = new Set(mergedDeletedArchiveIds);
   const deletedProfiles = new Set(mergedDeletedProfileIds);
-  const mergedProfiles = mergeById(snapshot.profiles, cloud.profiles, mergedProfileUpdatedAt).filter((item) => !deletedProfiles.has(item.id));
+  const profileMap = new Map<string, LetterheadConfig>();
+  for (const profile of cloud.profiles) profileMap.set(profile.id, profile);
+  for (const profile of snapshot.profiles) {
+    const previous = profileMap.get(profile.id);
+    const localTime = localProfileTimes[profile.id] || '';
+    const cloudTime = cloudProfileTimes[profile.id] || '';
+    if (!previous || localTime >= cloudTime) profileMap.set(profile.id, profile);
+  }
+  const mergedProfiles = [...profileMap.values()].filter((item) => !deletedProfiles.has(item.id));
   const mergedArchive = mergeById(snapshot.archive, cloud.archive).filter((item) => !deletedArchive.has(item.id));
   const mergedDoc =
     (snapshot.currentDoc.updatedAt || '') >= (cloud.currentDoc?.updatedAt || '')
