@@ -1,0 +1,6 @@
+{
+  "name": "TataNaskah — Pembuat Surat Resmi & Cetak PDF",
+  "description": "Aplikasi penyusun berbagai jenis surat dinas, perusahaan, pendidikan, dan organisasi dengan kop surat resmi yang dapat dikustomisasi serta fitur cetak PDF otomatis.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

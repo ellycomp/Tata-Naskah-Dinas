@@ -1,0 +1,454 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net: deny all unspecified paths by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Global Hardened Primitives
+    // -------------------------------------------------------------------------
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function parentUserExists(userId) {
+      return exists(/databases/$(database)/documents/users/$(userId));
+    }
+
+    function isValidCategory(cat) {
+      return cat is string && cat.size() <= 32 && cat in ['Pemerintahan', 'Perusahaan', 'Pendidikan', 'Organisasi'];
+    }
+
+    function isValidBuiltInLogo(logo) {
+      return logo is string && logo.size() <= 20 && logo in ['shield', 'corporate', 'academic', 'organization', 'none'];
+    }
+
+    // -------------------------------------------------------------------------
+    // User Profile Validation
+    // -------------------------------------------------------------------------
+    function isValidUserProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'displayName', 'email', 'photoURL', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'displayName', 'email', 'photoURL', 'createdAt', 'updatedAt'])
+        && isValidId(data.uid)
+        && data.uid == userId
+        && data.uid == request.auth.uid
+        && data.displayName is string && data.displayName.size() <= 120
+        && data.email is string && data.email.size() <= 254
+        && data.photoURL is string && data.photoURL.size() <= 500
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // -------------------------------------------------------------------------
+    // Letterhead Validation Helpers (kept shallow for compiler AST limits)
+    // -------------------------------------------------------------------------
+    function isValidLetterheadText(lh) {
+      return lh.profileName is string && lh.profileName.size() <= 120
+        && isValidCategory(lh.category)
+        && lh.parentOrg is string && lh.parentOrg.size() <= 200
+        && lh.orgName is string && lh.orgName.size() <= 200
+        && lh.subUnit is string && lh.subUnit.size() <= 200
+        && lh.address is string && lh.address.size() <= 500
+        && lh.contactLine is string && lh.contactLine.size() <= 200
+        && lh.websiteLine is string && lh.websiteLine.size() <= 200
+        && lh.websiteEmailLine is string && lh.websiteEmailLine.size() <= 200
+        && lh.websiteOnLastLine is bool
+        && lh.contactLastLineMode is string && lh.contactLastLineMode.size() <= 20
+        && lh.contactLastLineMode in ['inline', 'website-last', 'email-last'];
+    }
+
+    function isValidLetterheadVisuals(lh) {
+      return lh.layout is string && lh.layout.size() <= 20
+        && lh.layout in ['left-center', 'left-left', 'dual-center']
+        && lh.dividerStyle is string && lh.dividerStyle.size() <= 30
+        && lh.dividerStyle in ['double-official', 'single-bold', 'accent-line']
+        && lh.accentColor is string && lh.accentColor.size() <= 20
+        && isValidBuiltInLogo(lh.builtInLogo)
+        && isValidBuiltInLogo(lh.rightBuiltInLogo)
+        && lh.customLogoDataUrl is string && lh.customLogoDataUrl.size() <= 140000
+        && lh.leftLogoSize is number && lh.leftLogoSize >= 24 && lh.leftLogoSize <= 160
+        && lh.showRightLogo is bool
+        && lh.rightLogoDataUrl is string && lh.rightLogoDataUrl.size() <= 140000
+        && lh.rightLogoSize is number && lh.rightLogoSize >= 24 && lh.rightLogoSize <= 160;
+    }
+
+    function isValidLetterheadMap(lh) {
+      return lh is map
+        && lh.keys().hasAll([
+          'id', 'profileName', 'category', 'parentOrg', 'orgName', 'subUnit',
+          'address', 'contactLine', 'websiteLine', 'websiteEmailLine',
+          'websiteOnLastLine', 'contactLastLineMode', 'layout', 'dividerStyle',
+          'accentColor', 'builtInLogo', 'rightBuiltInLogo', 'customLogoDataUrl',
+          'leftLogoSize', 'showRightLogo', 'rightLogoDataUrl', 'rightLogoSize'
+        ])
+        && lh.keys().hasOnly([
+          'id', 'profileName', 'category', 'parentOrg', 'orgName', 'subUnit',
+          'address', 'contactLine', 'websiteLine', 'websiteEmailLine',
+          'websiteOnLastLine', 'contactLastLineMode', 'layout', 'dividerStyle',
+          'accentColor', 'builtInLogo', 'rightBuiltInLogo', 'customLogoDataUrl',
+          'leftLogoSize', 'showRightLogo', 'rightLogoDataUrl', 'rightLogoSize'
+        ])
+        && isValidId(lh.id)
+        && isValidLetterheadText(lh)
+        && isValidLetterheadVisuals(lh);
+    }
+
+    function isValidLetterheadProfile(data, userId, profileId) {
+      return data.keys().hasAll([
+          'ownerId', 'id', 'profileName', 'category', 'parentOrg', 'orgName', 'subUnit',
+          'address', 'contactLine', 'websiteLine', 'websiteEmailLine',
+          'websiteOnLastLine', 'contactLastLineMode', 'layout', 'dividerStyle',
+          'accentColor', 'builtInLogo', 'rightBuiltInLogo', 'customLogoDataUrl',
+          'leftLogoSize', 'showRightLogo', 'rightLogoDataUrl', 'rightLogoSize',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'id', 'profileName', 'category', 'parentOrg', 'orgName', 'subUnit',
+          'address', 'contactLine', 'websiteLine', 'websiteEmailLine',
+          'websiteOnLastLine', 'contactLastLineMode', 'layout', 'dividerStyle',
+          'accentColor', 'builtInLogo', 'rightBuiltInLogo', 'customLogoDataUrl',
+          'leftLogoSize', 'showRightLogo', 'rightLogoDataUrl', 'rightLogoSize',
+          'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.ownerId)
+        && data.ownerId == userId
+        && data.ownerId == request.auth.uid
+        && isValidId(data.id)
+        && data.id == profileId
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp
+        && isValidLetterheadText(data)
+        && isValidLetterheadVisuals(data);
+    }
+
+    // -------------------------------------------------------------------------
+    // Letter Sub-Structure Validation Helpers
+    // -------------------------------------------------------------------------
+    function isValidSkClause(clause) {
+      return clause is map
+        && clause.keys().hasAll(['id', 'label', 'text'])
+        && clause.keys().hasOnly(['id', 'label', 'text'])
+        && clause.id is string && clause.id.size() <= 128
+        && clause.label is string && clause.label.size() <= 80
+        && clause.text is string && clause.text.size() <= 2500;
+    }
+
+    function isValidSkData(sk) {
+      return sk is map
+        && sk.keys().hasAll([
+          'about', 'considering', 'legalBasis', 'decisionWord',
+          'enactLabel', 'enactStatement', 'clauses', 'establishedIn', 'establishedDate'
+        ])
+        && sk.keys().hasOnly([
+          'about', 'considering', 'legalBasis', 'decisionWord',
+          'enactLabel', 'enactStatement', 'clauses', 'establishedIn', 'establishedDate'
+        ])
+        && sk.about is string && sk.about.size() <= 500
+        && sk.considering is list && sk.considering.size() <= 25
+        && (sk.considering.size() == 0 || (sk.considering[0] is string && sk.considering[0].size() <= 1500))
+        && sk.legalBasis is list && sk.legalBasis.size() <= 25
+        && (sk.legalBasis.size() == 0 || (sk.legalBasis[0] is string && sk.legalBasis[0].size() <= 1500))
+        && sk.decisionWord is string && sk.decisionWord.size() <= 100
+        && sk.enactLabel is string && sk.enactLabel.size() <= 100
+        && sk.enactStatement is string && sk.enactStatement.size() <= 1000
+        && sk.clauses is list && sk.clauses.size() <= 30
+        && (sk.clauses.size() == 0 || isValidSkClause(sk.clauses[0]))
+        && sk.establishedIn is string && sk.establishedIn.size() <= 120
+        && sk.establishedDate is string && sk.establishedDate.size() <= 120;
+    }
+
+    function isValidGiverParty(gp) {
+      return gp is map
+        && gp.keys().hasAll(['name', 'title', 'address'])
+        && gp.keys().hasOnly(['name', 'title', 'address'])
+        && gp.name is string && gp.name.size() <= 150
+        && gp.title is string && gp.title.size() <= 150
+        && gp.address is string && gp.address.size() <= 400;
+    }
+
+    function isValidRecipientParty(rp) {
+      return rp is map
+        && rp.keys().hasAll([
+          'roleType', 'name', 'birthPlaceDate', 'studentNisn',
+          'teacherIdType', 'teacherIdNumber', 'position', 'address'
+        ])
+        && rp.keys().hasOnly([
+          'roleType', 'name', 'birthPlaceDate', 'studentNisn',
+          'teacherIdType', 'teacherIdNumber', 'position', 'address'
+        ])
+        && rp.roleType is string && rp.roleType.size() <= 10 && rp.roleType in ['guru', 'siswa']
+        && rp.name is string && rp.name.size() <= 150
+        && rp.birthPlaceDate is string && rp.birthPlaceDate.size() <= 150
+        && rp.studentNisn is string && rp.studentNisn.size() <= 40
+        && rp.teacherIdType is string && rp.teacherIdType.size() <= 10 && rp.teacherIdType in ['NIY', 'NUPTK']
+        && rp.teacherIdNumber is string && rp.teacherIdNumber.size() <= 50
+        && rp.position is string && rp.position.size() <= 150
+        && rp.address is string && rp.address.size() <= 400;
+    }
+
+    function isValidDetailRow(row) {
+      return row is map
+        && row.keys().hasAll(['id', 'label', 'value'])
+        && row.keys().hasOnly(['id', 'label', 'value'])
+        && row.id is string && row.id.size() <= 128
+        && row.label is string && row.label.size() <= 200
+        && row.value is string && row.value.size() <= 1000;
+    }
+
+    function isValidForwardingItem(item) {
+      return item is map
+        && item.keys().hasAll(['id', 'description', 'quantity', 'notes'])
+        && item.keys().hasOnly(['id', 'description', 'quantity', 'notes'])
+        && item.id is string && item.id.size() <= 128
+        && item.description is string && item.description.size() <= 500
+        && item.quantity is string && item.quantity.size() <= 100
+        && item.notes is string && item.notes.size() <= 300;
+    }
+
+    function isValidLetterKeys(data) {
+      return data.keys().hasAll([
+          'ownerId', 'id', 'templateId', 'templateName', 'category', 'formatStyle', 'letterKind',
+          'decreeTitle', 'letterhead', 'letterNumber', 'attachment', 'urgency', 'subject',
+          'city', 'dateString', 'recipientLines', 'salutation', 'openingParagraph', 'detailRows',
+          'bodyParagraphs', 'closingParagraph', 'skData', 'giverParty', 'recipientParty',
+          'forwardingItems', 'signerDepartment', 'signerTitle', 'signerName', 'signerIdLabel',
+          'signerIdValue', 'signatureDataUrl', 'signatureScale', 'signatureMode', 'showManualSignatureBox', 'qrSourceMode',
+          'qrCustomLink', 'customQrDataUrl', 'qrUploadedDecodedUrl', 'qrSize', 'qrShowCaption',
+          'showStamp', 'stampMode', 'customStampDataUrl', 'stampScale', 'stampTextTop',
+          'stampTextCenter', 'stampColor', 'ccList', 'paperSize', 'fontFamily', 'fontSizePt',
+          'marginPreset', 'clientUpdatedAt', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'ownerId', 'id', 'templateId', 'templateName', 'category', 'formatStyle', 'letterKind',
+          'decreeTitle', 'letterhead', 'letterNumber', 'attachment', 'urgency', 'subject',
+          'city', 'dateString', 'recipientLines', 'salutation', 'openingParagraph', 'detailRows',
+          'bodyParagraphs', 'closingParagraph', 'skData', 'giverParty', 'recipientParty',
+          'forwardingItems', 'signerDepartment', 'signerTitle', 'signerName', 'signerIdLabel',
+          'signerIdValue', 'signatureDataUrl', 'signatureScale', 'signatureMode', 'showManualSignatureBox', 'qrSourceMode',
+          'qrCustomLink', 'customQrDataUrl', 'qrUploadedDecodedUrl', 'qrSize', 'qrShowCaption',
+          'showStamp', 'stampMode', 'customStampDataUrl', 'stampScale', 'stampTextTop',
+          'stampTextCenter', 'stampColor', 'ccList', 'paperSize', 'fontFamily', 'fontSizePt',
+          'marginPreset', 'clientUpdatedAt', 'createdAt', 'updatedAt'
+        ]);
+    }
+
+    function isValidLetterMeta(data, userId, letterId) {
+      return isValidId(data.ownerId)
+        && data.ownerId == userId
+        && data.ownerId == request.auth.uid
+        && isValidId(data.id)
+        && data.id == letterId
+        && data.templateId is string && data.templateId.size() <= 100
+        && data.templateName is string && data.templateName.size() <= 150
+        && isValidCategory(data.category)
+        && data.formatStyle is string && data.formatStyle.size() <= 24 && data.formatStyle in ['correspondence', 'decree']
+        && data.letterKind is string && data.letterKind.size() <= 24 && data.letterKind in ['standard', 'sk', 'surat-tugas', 'surat-keterangan', 'surat-kuasa', 'surat-pengantar']
+        && data.decreeTitle is string && data.decreeTitle.size() <= 200
+        && data.letterNumber is string && data.letterNumber.size() <= 150
+        && data.attachment is string && data.attachment.size() <= 150
+        && data.urgency is string && data.urgency.size() <= 80
+        && data.subject is string && data.subject.size() <= 300
+        && data.city is string && data.city.size() <= 120
+        && data.dateString is string && data.dateString.size() <= 120;
+    }
+
+    function isValidLetterContent(data) {
+      return data.recipientLines is list && data.recipientLines.size() <= 15
+        && (data.recipientLines.size() == 0 || (data.recipientLines[0] is string && data.recipientLines[0].size() <= 300))
+        && data.salutation is string && data.salutation.size() <= 200
+        && data.openingParagraph is string && data.openingParagraph.size() <= 4000
+        && data.detailRows is list && data.detailRows.size() <= 30
+        && (data.detailRows.size() == 0 || isValidDetailRow(data.detailRows[0]))
+        && data.bodyParagraphs is list && data.bodyParagraphs.size() <= 30
+        && (data.bodyParagraphs.size() == 0 || (data.bodyParagraphs[0] is string && data.bodyParagraphs[0].size() <= 5000))
+        && data.closingParagraph is string && data.closingParagraph.size() <= 4000
+        && data.forwardingItems is list && data.forwardingItems.size() <= 40
+        && (data.forwardingItems.size() == 0 || isValidForwardingItem(data.forwardingItems[0]))
+        && data.ccList is list && data.ccList.size() <= 20
+        && (data.ccList.size() == 0 || (data.ccList[0] is string && data.ccList[0].size() <= 300));
+    }
+
+    function isValidLetterAuthAndStamp(data) {
+      return data.signerDepartment is string && data.signerDepartment.size() <= 200
+        && data.signerTitle is string && data.signerTitle.size() <= 200
+        && data.signerName is string && data.signerName.size() <= 150
+        && data.signerIdLabel is string && data.signerIdLabel.size() <= 60
+        && data.signerIdValue is string && data.signerIdValue.size() <= 80
+        && data.signatureDataUrl is string && data.signatureDataUrl.size() <= 140000
+        && data.signatureScale is number && data.signatureScale >= 30 && data.signatureScale <= 200
+        && data.signatureMode is string && data.signatureMode.size() <= 20 && data.signatureMode in ['manual', 'qr', 'both']
+        && data.showManualSignatureBox is bool
+        && data.qrSourceMode is string && data.qrSourceMode.size() <= 24 && data.qrSourceMode in ['auto-link', 'custom-upload']
+        && data.qrCustomLink is string && data.qrCustomLink.size() <= 4000
+        && data.customQrDataUrl is string && data.customQrDataUrl.size() <= 140000
+        && data.qrUploadedDecodedUrl is string && data.qrUploadedDecodedUrl.size() <= 4000
+        && data.qrSize is number && data.qrSize >= 40 && data.qrSize <= 200
+        && data.qrShowCaption is bool
+        && data.showStamp is bool
+        && data.stampMode is string && data.stampMode.size() <= 20 && data.stampMode in ['auto-svg', 'custom-png']
+        && data.customStampDataUrl is string && data.customStampDataUrl.size() <= 140000
+        && data.stampScale is number && data.stampScale >= 40 && data.stampScale <= 200
+        && data.stampTextTop is string && data.stampTextTop.size() <= 150
+        && data.stampTextCenter is string && data.stampTextCenter.size() <= 150
+        && data.stampColor is string && data.stampColor.size() <= 20;
+    }
+
+    function isValidLetterLayoutAndTimes(data) {
+      return data.paperSize is string && data.paperSize.size() <= 10 && data.paperSize in ['A4', 'F4']
+        && data.fontFamily is string && data.fontFamily.size() <= 20 && data.fontFamily in ['times', 'arial', 'georgia']
+        && data.fontSizePt is number && data.fontSizePt in [10, 11, 12]
+        && data.marginPreset is string && data.marginPreset.size() <= 20 && data.marginPreset in ['standard', 'compact', 'wide']
+        && data.clientUpdatedAt is string && data.clientUpdatedAt.size() <= 64
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidArchivedLetter(data, userId, letterId) {
+      return isValidLetterKeys(data)
+        && isValidLetterMeta(data, userId, letterId)
+        && isValidLetterheadMap(data.letterhead)
+        && isValidLetterContent(data)
+        && isValidSkData(data.skData)
+        && isValidGiverParty(data.giverParty)
+        && isValidRecipientParty(data.recipientParty)
+        && isValidLetterAuthAndStamp(data)
+        && isValidLetterLayoutAndTimes(data);
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Match Blocks
+    // -------------------------------------------------------------------------
+    match /users/{userId} {
+      // PII Isolation: Only owner can read their own profile. Blanket list forbidden.
+      allow get: if isOwner(userId) && isValidId(userId);
+      allow list: if false;
+
+      allow create: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+
+      allow update: if isOwner(userId)
+        && isValidId(userId)
+        && isValidUserProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'email', 'photoURL', 'updatedAt']);
+
+      allow delete: if isOwner(userId) && isValidId(userId);
+
+      // Saved Letterhead Profiles
+      match /letterheads/{profileId} {
+        allow get: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(profileId)
+          && parentUserExists(userId);
+
+        allow list: if isOwner(userId)
+          && resource.data.ownerId == request.auth.uid;
+
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(profileId)
+          && isValidLetterheadProfile(incoming(), userId, profileId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && parentUserExists(userId);
+
+        allow update: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(profileId)
+          && isValidLetterheadProfile(incoming(), userId, profileId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().id == existing().id
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'profileName', 'category', 'parentOrg', 'orgName', 'subUnit',
+            'address', 'contactLine', 'websiteLine', 'websiteEmailLine',
+            'websiteOnLastLine', 'contactLastLineMode', 'layout', 'dividerStyle',
+            'accentColor', 'builtInLogo', 'rightBuiltInLogo', 'customLogoDataUrl',
+            'leftLogoSize', 'showRightLogo', 'rightLogoDataUrl', 'rightLogoSize',
+            'updatedAt'
+          ])
+          && parentUserExists(userId);
+
+        allow delete: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(profileId)
+          && parentUserExists(userId);
+      }
+
+      // Archived Official Letters
+      match /letters/{letterId} {
+        allow get: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(letterId)
+          && parentUserExists(userId);
+
+        allow list: if isOwner(userId)
+          && resource.data.ownerId == request.auth.uid;
+
+        allow create: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(letterId)
+          && isValidArchivedLetter(incoming(), userId, letterId)
+          && incoming().createdAt == request.time
+          && incoming().updatedAt == request.time
+          && parentUserExists(userId);
+
+        allow update: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(letterId)
+          && isValidArchivedLetter(incoming(), userId, letterId)
+          && incoming().ownerId == existing().ownerId
+          && incoming().id == existing().id
+          && incoming().createdAt == existing().createdAt
+          && incoming().updatedAt == request.time
+          && incoming().diff(existing()).affectedKeys().hasOnly([
+            'templateId', 'templateName', 'category', 'formatStyle', 'letterKind',
+            'decreeTitle', 'letterhead', 'letterNumber', 'attachment', 'urgency', 'subject',
+            'city', 'dateString', 'recipientLines', 'salutation', 'openingParagraph', 'detailRows',
+            'bodyParagraphs', 'closingParagraph', 'skData', 'giverParty', 'recipientParty',
+            'forwardingItems', 'signerDepartment', 'signerTitle', 'signerName', 'signerIdLabel',
+            'signerIdValue', 'signatureDataUrl', 'signatureScale', 'signatureMode', 'showManualSignatureBox', 'qrSourceMode',
+            'qrCustomLink', 'customQrDataUrl', 'qrUploadedDecodedUrl', 'qrSize', 'qrShowCaption',
+            'showStamp', 'stampMode', 'customStampDataUrl', 'stampScale', 'stampTextTop',
+            'stampTextCenter', 'stampColor', 'ccList', 'paperSize', 'fontFamily', 'fontSizePt',
+            'marginPreset', 'clientUpdatedAt', 'updatedAt'
+          ])
+          && parentUserExists(userId);
+
+        allow delete: if isOwner(userId)
+          && isValidId(userId)
+          && isValidId(letterId)
+          && parentUserExists(userId);
+      }
+    }
+  }
+}
