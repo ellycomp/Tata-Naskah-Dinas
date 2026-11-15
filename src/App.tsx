@@ -14,9 +14,6 @@ import {
   AlertCircle,
   QrCode,
   ShieldCheck,
-  LogIn,
-  LogOut,
-  User as UserIcon,
   CloudUpload,
 } from 'lucide-react';
 import {
@@ -213,8 +210,8 @@ function createInitialDoc(profiles: LetterheadConfig[]): LetterDocument {
   return firstTemplate.buildDocument(defaultKop);
 }
 
-hapus formatter Firestorefunction TataNaskahWorkspace() {
-hapus useAuth  const [activeView, setActiveView] = useState<AppView>('editor');
+function TataNaskahWorkspace() {
+  const [activeView, setActiveView] = useState<AppView>('editor');
   const [letterheadProfiles, setLetterheadProfiles] = useState<LetterheadConfig[]>(
     loadInitialProfiles
   );
@@ -246,7 +243,7 @@ hapus useAuth  const [activeView, setActiveView] = useState<AppView>('editor');
     toastTimerRef.current = window.setTimeout(() => setToast(null), 4000);
   };
 
-hapus listener Firestore  // Detect ?surat=... verification link when opened from QR scan
+  // Detect ?surat=... verification link when opened from QR scan
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
