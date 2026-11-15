@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Search, FileDown, Copy, Trash2, FolderOpen, Eye, Cloud, LogIn } from 'lucide-react';
+import { Search, FileDown, Copy, Trash2, FolderOpen, Eye } from 'lucide-react';
 import { LetterCategory, LetterDocument } from '../types/letter';
 
 interface ArchiveViewProps {
@@ -9,9 +9,6 @@ interface ArchiveViewProps {
   onDuplicateLetter: (doc: LetterDocument) => void;
   onDeleteLetter: (id: string) => void;
   onCreateNew: () => void;
-  isSignedIn?: boolean;
-  userEmail?: string | null;
-  onSignIn?: () => void;
 }
 
 export const ArchiveView: React.FC<ArchiveViewProps> = ({
@@ -21,9 +18,6 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
   onDuplicateLetter,
   onDeleteLetter,
   onCreateNew,
-  isSignedIn = false,
-  userEmail = null,
-  onSignIn,
 }) => {
   const [query, setQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<'Semua' | LetterCategory>('Semua');
@@ -58,28 +52,10 @@ export const ArchiveView: React.FC<ArchiveViewProps> = ({
         <div>
           <h1 className="text-xl font-semibold text-slate-900">Arsip Surat Tersimpan</h1>
           <p className="text-sm text-slate-600 mt-1">
-            {isSignedIn
-              ? `Tersinkronisasi ke Cloud Firestore (${userEmail || 'Akun Google'}). Buka kembali surat dari perangkat mana saja.`
-              : 'Tersimpan secara lokal di browser. Masuk dengan Google untuk mencadangkan dan menyinkronkan arsip ke Cloud Firestore.'}
+            Arsip tersimpan di perangkat ini. Gunakan tombol Sinkronkan Drive di bagian atas untuk mencadangkan dan membukanya di perangkat lain.
           </p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {!isSignedIn && onSignIn && (
-            <button
-              type="button"
-              onClick={onSignIn}
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-medium text-[#1e3a5f] bg-white border border-slate-300 hover:bg-slate-50 rounded-lg transition-colors cursor-pointer whitespace-nowrap"
-            >
-              <LogIn className="w-4 h-4" />
-              Sinkronkan Google
-            </button>
-          )}
-          {isSignedIn && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-2 text-xs font-medium text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-lg whitespace-nowrap">
-              <Cloud className="w-3.5 h-3.5" />
-              Tersimpan di Cloud
-            </span>
-          )}
           <button
             type="button"
             onClick={onCreateNew}
