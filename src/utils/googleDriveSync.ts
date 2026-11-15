@@ -59,7 +59,7 @@ function loadGoogleIdentityServices(): Promise<void> {
 }
 
 async function requestDriveToken(clientId: string, expectedEmail: string, interactive = true): Promise<string> {
-  if (accessToken && tokenAccountEmail.toLowerCase() === expectedEmail.toLowerCase() && Date.now() < tokenExpiresAt - 60_000) return accessToken;
+  if (accessToken && (!expectedEmail || tokenAccountEmail.toLowerCase() === expectedEmail.toLowerCase()) && Date.now() < tokenExpiresAt - 60_000) return accessToken;
   accessToken = null;
   tokenExpiresAt = 0;
   tokenAccountEmail = '';
@@ -241,10 +241,16 @@ export async function syncWorkspaceWithGoogleDrive(
   }
   const mergedProfiles = [...profileMap.values()].filter((item) => !deletedProfiles.has(item.id));
   const mergedArchive = mergeById(snapshot.archive, cloud.archive).filter((item) => !deletedArchive.has(item.id));
+  const localDocTime = snapshot.currentDoc.updatedAt || '';
+  const cloudDocTime = cloud.currentDoc?.updatedAt || '';
   const mergedDoc =
-    (snapshot.currentDoc.updatedAt || '') >= (cloud.currentDoc?.updatedAt || '')
-      ? snapshot.currentDoc
-      : cloud.currentDoc || snapshot.currentDoc;
+    !localDocTime && cloud.currentDoc
+      ? cloud.currentDoc
+      : !cloudDocTime
+        ? snapshot.currentDoc
+        : localDocTime >= cloudDocTime
+          ? snapshot.currentDoc
+          : cloud.currentDoc;
 
   const merged: DriveWorkspaceSnapshot = {
     schemaVersion: 1,
