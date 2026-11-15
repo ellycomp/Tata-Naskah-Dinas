@@ -200,10 +200,11 @@ export async function syncWorkspaceWithGoogleDrive(
     accessToken = null;
     tokenExpiresAt = 0;
     tokenAccountEmail = '';
-    throw new Error(`Akun Drive (${identity.email}) berbeda dari akun TataNaskah (${snapshot.ownerEmail}). Pilih akun Google yang sama.`);
+    throw new Error(`Akun Drive (${identity.email}) berbeda dari akun cadangan TataNaskah (${snapshot.ownerEmail}). Pilih akun Google yang sama.`);
   }
 
   if (identity.email) tokenAccountEmail = identity.email;
+  snapshot = { ...snapshot, ownerEmail: identity.email || snapshot.ownerEmail };
 
   const file = await getDriveFile(token);
   if (!file) {
