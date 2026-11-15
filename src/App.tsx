@@ -218,9 +218,16 @@ function TataNaskahWorkspace() {
   const [archivedLetters, setArchivedLetters] = useState<LetterDocument[]>(
     loadInitialArchive
   );
-  const [currentDoc, setCurrentDoc] = useState<LetterDocument>(() =>
+  const [currentDoc, setCurrentDocState] = useState<LetterDocument>(() =>
     createInitialDoc(loadInitialProfiles())
   );
+  // Stamp every draft edit so Drive can resolve the newest version across devices.
+  const setCurrentDoc: React.Dispatch<React.SetStateAction<LetterDocument>> = (next) => {
+    setCurrentDocState((previous) => {
+      const updated = typeof next === 'function' ? next(previous) : next;
+      return { ...updated, updatedAt: new Date().toISOString() };
+    });
+  };
 
   const [templateSearch, setTemplateSearch] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<'Semua' | LetterCategory>('Semua');
