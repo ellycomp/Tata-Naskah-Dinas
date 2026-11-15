@@ -230,8 +230,11 @@ function saveLetterhead(profile) {
  */
 function archiveLetter(payload) {
   const email = requireAuthorizedUser_();
-  validateObject_(payload, 'Data arsip');
-  if (!payload.letter || !payload.pdfBase64) throw new Error('Data surat dan PDF wajib disertakan.');
+  if (!payload || typeof payload !== 'object' || !payload.letter || typeof payload.pdfBase64 !== 'string') {
+    throw new Error('Data surat dan PDF wajib disertakan.');
+  }
+  validateObject_(payload.letter, 'Data surat');
+  if (payload.pdfBase64.length > 18000000) throw new Error('Ukuran PDF melebihi batas 18 MB.');
 
   const letter = payload.letter;
   const archiveId = letter.id || Utilities.getUuid();
