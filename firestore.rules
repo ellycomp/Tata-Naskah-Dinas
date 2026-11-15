@@ -234,7 +234,7 @@ service cloud.firestore {
           'decreeTitle', 'letterhead', 'letterNumber', 'attachment', 'urgency', 'subject',
           'city', 'dateString', 'recipientLines', 'salutation', 'openingParagraph', 'detailRows',
           'bodyParagraphs', 'closingParagraph', 'skData', 'giverParty', 'recipientParty',
-          'forwardingItems', 'signerDepartment', 'signerTitle', 'signerName', 'signerIdLabel',
+          'recipientParties', 'forwardingItems', 'signerDepartment', 'signerTitle', 'signerName', 'signerIdLabel',
           'signerIdValue', 'signatureDataUrl', 'signatureScale', 'signatureMode', 'showManualSignatureBox', 'qrSourceMode',
           'qrCustomLink', 'customQrDataUrl', 'qrUploadedDecodedUrl', 'qrSize', 'qrShowCaption',
           'showStamp', 'stampMode', 'customStampDataUrl', 'stampScale', 'stampTextTop',
@@ -246,7 +246,7 @@ service cloud.firestore {
           'decreeTitle', 'letterhead', 'letterNumber', 'attachment', 'urgency', 'subject',
           'city', 'dateString', 'recipientLines', 'salutation', 'openingParagraph', 'detailRows',
           'bodyParagraphs', 'closingParagraph', 'skData', 'giverParty', 'recipientParty',
-          'forwardingItems', 'signerDepartment', 'signerTitle', 'signerName', 'signerIdLabel',
+          'recipientParties', 'forwardingItems', 'signerDepartment', 'signerTitle', 'signerName', 'signerIdLabel',
           'signerIdValue', 'signatureDataUrl', 'signatureScale', 'signatureMode', 'showManualSignatureBox', 'qrSourceMode',
           'qrCustomLink', 'customQrDataUrl', 'qrUploadedDecodedUrl', 'qrSize', 'qrShowCaption',
           'showStamp', 'stampMode', 'customStampDataUrl', 'stampScale', 'stampTextTop',
@@ -285,6 +285,8 @@ service cloud.firestore {
         && data.bodyParagraphs is list && data.bodyParagraphs.size() <= 30
         && (data.bodyParagraphs.size() == 0 || (data.bodyParagraphs[0] is string && data.bodyParagraphs[0].size() <= 5000))
         && data.closingParagraph is string && data.closingParagraph.size() <= 4000
+        && data.recipientParties is list && data.recipientParties.size() <= 50
+        && (data.recipientParties.size() == 0 || isValidRecipientParty(data.recipientParties[0]))
         && data.forwardingItems is list && data.forwardingItems.size() <= 40
         && (data.forwardingItems.size() == 0 || isValidForwardingItem(data.forwardingItems[0]))
         && data.ccList is list && data.ccList.size() <= 20
@@ -435,7 +437,7 @@ service cloud.firestore {
             'decreeTitle', 'letterhead', 'letterNumber', 'attachment', 'urgency', 'subject',
             'city', 'dateString', 'recipientLines', 'salutation', 'openingParagraph', 'detailRows',
             'bodyParagraphs', 'closingParagraph', 'skData', 'giverParty', 'recipientParty',
-            'forwardingItems', 'signerDepartment', 'signerTitle', 'signerName', 'signerIdLabel',
+            'recipientParties', 'forwardingItems', 'signerDepartment', 'signerTitle', 'signerName', 'signerIdLabel',
             'signerIdValue', 'signatureDataUrl', 'signatureScale', 'signatureMode', 'showManualSignatureBox', 'qrSourceMode',
             'qrCustomLink', 'customQrDataUrl', 'qrUploadedDecodedUrl', 'qrSize', 'qrShowCaption',
             'showStamp', 'stampMode', 'customStampDataUrl', 'stampScale', 'stampTextTop',

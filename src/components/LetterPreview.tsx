@@ -1127,13 +1127,32 @@ export const LetterPreview: React.FC<LetterPreviewProps> = ({
             {letterKind !== 'standard' ? (
               (() => {
                 const giver = doc.giverParty || createDefaultGiverParty(kop);
-                const recipient = doc.recipientParty || createDefaultRecipientParty('guru');
+                const recipients =
+                  doc.recipientParties && doc.recipientParties.length > 0
+                    ? doc.recipientParties
+                    : [doc.recipientParty || createDefaultRecipientParty('guru')];
+                const isMultiRecipientTable =
+                  letterKind !== 'surat-kuasa' && recipients.length > 1;
+                const recipient = recipients[0];
                 const recipientIdLabel =
                   recipient.roleType === 'siswa' ? 'NISN' : recipient.teacherIdType;
                 const recipientIdValue =
                   recipient.roleType === 'siswa'
                     ? recipient.studentNisn
                     : recipient.teacherIdNumber;
+
+                const allSiswa = recipients.every((r) => r.roleType === 'siswa');
+                const allGuru = recipients.every((r) => r.roleType === 'guru');
+                const tableIdHeader = allSiswa
+                  ? 'NISN'
+                  : allGuru
+                    ? 'NIY/NUPTK'
+                    : 'NIY/NUPTK / NISN';
+                const tableRoleHeader = allSiswa
+                  ? 'Kelas'
+                  : allGuru
+                    ? 'Jabatan'
+                    : 'Jabatan / Kelas';
 
                 return (
                   <>
@@ -1162,13 +1181,152 @@ export const LetterPreview: React.FC<LetterPreviewProps> = ({
                               : 'Dengan ini memberikan surat pengantar kepada:')}
                     </div>
 
-                    {renderPartyRows([
-                      { label: 'Nama', value: recipient.name },
-                      { label: 'Tempat / Tanggal Lahir', value: recipient.birthPlaceDate },
-                      { label: recipientIdLabel, value: recipientIdValue },
-                      { label: 'Jabatan', value: recipient.position },
-                      { label: 'Alamat', value: recipient.address },
-                    ])}
+                    {isMultiRecipientTable ? (
+                      <table
+                        style={{
+                          width: '100%',
+                          borderCollapse: 'collapse',
+                          margin: '8px 0 14px 0',
+                          fontSize: `${Math.max(doc.fontSizePt - 0.5, 9.5)}pt`,
+                        }}
+                      >
+                        <thead>
+                          <tr>
+                            <th
+                              style={{
+                                border: '1px solid #1f2937',
+                                padding: '5px 6px',
+                                width: '34px',
+                                textAlign: 'center',
+                                backgroundColor: '#f8fafc',
+                              }}
+                            >
+                              No.
+                            </th>
+                            <th
+                              style={{
+                                border: '1px solid #1f2937',
+                                padding: '5px 8px',
+                                textAlign: 'left',
+                                backgroundColor: '#f8fafc',
+                              }}
+                            >
+                              Nama
+                            </th>
+                            <th
+                              style={{
+                                border: '1px solid #1f2937',
+                                padding: '5px 8px',
+                                textAlign: 'left',
+                                backgroundColor: '#f8fafc',
+                              }}
+                            >
+                              Tempat/Tanggal Lahir
+                            </th>
+                            <th
+                              style={{
+                                border: '1px solid #1f2937',
+                                padding: '5px 8px',
+                                textAlign: 'left',
+                                backgroundColor: '#f8fafc',
+                              }}
+                            >
+                              {tableIdHeader}
+                            </th>
+                            <th
+                              style={{
+                                border: '1px solid #1f2937',
+                                padding: '5px 8px',
+                                textAlign: 'left',
+                                backgroundColor: '#f8fafc',
+                              }}
+                            >
+                              {tableRoleHeader}
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {recipients.map((person, idx) => {
+                            const idDisplay = allSiswa
+                              ? person.studentNisn || '-'
+                              : allGuru
+                                ? person.teacherIdNumber
+                                  ? `${person.teacherIdType}. ${person.teacherIdNumber}`
+                                  : '-'
+                                : person.roleType === 'siswa'
+                                  ? person.studentNisn
+                                    ? `NISN. ${person.studentNisn}`
+                                    : '-'
+                                  : person.teacherIdNumber
+                                    ? `${person.teacherIdType}. ${person.teacherIdNumber}`
+                                    : '-';
+
+                            return (
+                              <tr key={idx}>
+                                <td
+                                  style={{
+                                    border: '1px solid #1f2937',
+                                    padding: '5px 6px',
+                                    textAlign: 'center',
+                                    verticalAlign: 'top',
+                                  }}
+                                >
+                                  {idx + 1}.
+                                </td>
+                                <td
+                                  style={{
+                                    border: '1px solid #1f2937',
+                                    padding: '5px 8px',
+                                    verticalAlign: 'top',
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  {person.name || '-'}
+                                </td>
+                                <td
+                                  style={{
+                                    border: '1px solid #1f2937',
+                                    padding: '5px 8px',
+                                    verticalAlign: 'top',
+                                  }}
+                                >
+                                  {person.birthPlaceDate || '-'}
+                                </td>
+                                <td
+                                  style={{
+                                    border: '1px solid #1f2937',
+                                    padding: '5px 8px',
+                                    verticalAlign: 'top',
+                                  }}
+                                >
+                                  {idDisplay}
+                                </td>
+                                <td
+                                  style={{
+                                    border: '1px solid #1f2937',
+                                    padding: '5px 8px',
+                                    verticalAlign: 'top',
+                                  }}
+                                >
+                                  {person.position || '-'}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    ) : (
+                      renderPartyRows([
+                        { label: 'Nama', value: recipient.name },
+                        { label: 'Tempat / Tanggal Lahir', value: recipient.birthPlaceDate },
+                        { label: recipientIdLabel, value: recipientIdValue },
+                        {
+                          label: recipient.roleType === 'siswa' ? 'Kelas' : 'Jabatan',
+                          value: recipient.position,
+                        },
+                        { label: 'Alamat', value: recipient.address },
+                      ])
+                    )}
 
                     {letterKind === 'surat-kuasa' && (
                       <div style={{ marginBottom: '10px' }}>

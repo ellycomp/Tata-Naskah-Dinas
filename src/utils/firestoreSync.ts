@@ -289,6 +289,11 @@ async function normalizeLetterUpdatableFields(docData: LetterDocument) {
     skData: normalizeSkData(docData.skData, docData.letterhead, docData.dateString),
     giverParty: normalizeGiverParty(docData.giverParty, docData.letterhead),
     recipientParty: normalizeRecipientParty(docData.recipientParty),
+    recipientParties: (
+      Array.isArray(docData.recipientParties) ? docData.recipientParties : []
+    )
+      .slice(0, 50)
+      .map((rp) => normalizeRecipientParty(rp)),
     forwardingItems,
     signerDepartment: clampString(docData.signerDepartment, 200),
     signerTitle: clampString(docData.signerTitle, 200),
@@ -438,6 +443,9 @@ export function fromFirestoreLetter(raw: Record<string, unknown>): LetterDocumen
     skData: raw.skData as DecreeData | undefined,
     giverParty: raw.giverParty as GiverPartyInfo | undefined,
     recipientParty: raw.recipientParty as RecipientPartyInfo | undefined,
+    recipientParties: Array.isArray(raw.recipientParties)
+      ? (raw.recipientParties as RecipientPartyInfo[])
+      : [],
     forwardingItems: Array.isArray(raw.forwardingItems)
       ? (raw.forwardingItems as ForwardingItem[])
       : [],

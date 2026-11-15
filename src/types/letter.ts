@@ -127,6 +127,7 @@ export interface LetterDocument {
   skData?: DecreeData;
   giverParty?: GiverPartyInfo;
   recipientParty?: RecipientPartyInfo;
+  recipientParties?: RecipientPartyInfo[];
   forwardingItems?: ForwardingItem[];
   signerDepartment: string;
   signerTitle: string;

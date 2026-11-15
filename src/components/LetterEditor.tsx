@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import {
-  Plus,
   Trash2,
   Upload,
   RefreshCw,
@@ -15,25 +14,21 @@ import {
 import {
   BuiltInLogoId,
   ContactLastLineMode,
-  DecreeData,
   DividerStyle,
-  ForwardingItem,
-  GiverPartyInfo,
   LetterDocument,
   LetterFont,
+  LetterFormatStyle,
   LetterKind,
   LetterheadConfig,
   LetterheadLayout,
   MarginPreset,
   PaperSize,
-  RecipientPartyInfo,
   SignatureMode,
   StampMode,
 } from '../types/letter';
 import {
   LETTER_SUBJECT_CODES,
   INSTITUTION_CODES,
-  ORDINAL_CLAUSE_LABELS,
   createDefaultForwardingItems,
   createDefaultGiverParty,
   createDefaultRecipientParty,
@@ -49,6 +44,8 @@ import {
 } from '../data/presets';
 import { SignaturePad } from './SignaturePad';
 import { QrSignaturePanel } from './QrSignaturePanel';
+import { CorrespondenceContentForm } from './CorrespondenceContentForm';
+import { DecreeContentForm } from './DecreeContentForm';
 
 export type EditorTab = 'kop' | 'kepala' | 'isi' | 'qr' | 'pengesahan';
 
@@ -144,42 +141,64 @@ export const LetterEditor: React.FC<LetterEditorProps> = ({
 
   const letterKind = resolveLetterKind(doc);
 
-  const handleChangeLetterKind = (nextKind: LetterKind) => {
-    const patch: Partial<LetterDocument> = { letterKind: nextKind };
-    if (nextKind === 'sk') {
-      patch.formatStyle = 'decree';
-      if (!doc.decreeTitle) patch.decreeTitle = 'SURAT KEPUTUSAN';
-      if (!doc.skData) patch.skData = createDefaultSkData(doc.letterhead, doc.dateString);
-    } else if (nextKind !== 'standard') {
-      if (nextKind === 'surat-pengantar') {
-        patch.formatStyle = 'correspondence';
-        if (!doc.decreeTitle) patch.decreeTitle = 'SURAT PENGANTAR';
-        if (!doc.forwardingItems) patch.forwardingItems = createDefaultForwardingItems();
-      } else {
-        patch.formatStyle = 'decree';
+  const getDefaultDecreeTitleForKind = (kind: LetterKind): string => {
+    if (kind === 'sk') return 'SURAT KEPUTUSAN';
+    if (kind === 'surat-tugas') return 'SURAT TUGAS';
+    if (kind === 'surat-keterangan') return 'SURAT KETERANGAN';
+    if (kind === 'surat-kuasa') return 'SURAT KUASA';
+    if (kind === 'surat-pengantar') return 'SURAT PENGANTAR';
+    if (doc.templateId === 'surat-edaran') return 'SURAT EDARAN';
+    if (doc.templateId === 'surat-peringatan') return 'SURAT PERINGATAN PERTAMA (SP-1)';
+    return 'SURAT RESMI';
+  };
+
+  const handleChangeFormatStyle = (nextStyle: LetterFormatStyle) => {
+    if (nextStyle === doc.formatStyle) return;
+    const patch: Partial<LetterDocument> = { formatStyle: nextStyle };
+    if (nextStyle === 'correspondence') {
+      if (letterKind === 'sk') {
+        patch.letterKind = 'standard';
       }
-      if (!doc.giverParty) patch.giverParty = createDefaultGiverParty(doc.letterhead);
-      if (!doc.recipientParty) patch.recipientParty = createDefaultRecipientParty('guru');
+      if (!doc.salutation.trim()) {
+        patch.salutation = 'Dengan hormat,';
+      }
+    } else {
+      patch.salutation = '';
+      if (letterKind === 'surat-pengantar') {
+        patch.letterKind = 'standard';
+      }
+      if (!doc.decreeTitle.trim()) {
+        patch.decreeTitle = getDefaultDecreeTitleForKind(
+          letterKind === 'surat-pengantar' ? 'standard' : letterKind
+        );
+      }
     }
     updateDoc(patch);
   };
 
-  const skData: DecreeData = doc.skData || createDefaultSkData(doc.letterhead, doc.dateString);
-  const giverParty: GiverPartyInfo = doc.giverParty || createDefaultGiverParty(doc.letterhead);
-  const recipientParty: RecipientPartyInfo =
-    doc.recipientParty || createDefaultRecipientParty('guru');
-  const forwardingItems: ForwardingItem[] = doc.forwardingItems || [];
-
-  const updateSkData = (patch: Partial<DecreeData>) => {
-    updateDoc({ skData: { ...skData, ...patch } });
-  };
-
-  const updateGiverParty = (patch: Partial<GiverPartyInfo>) => {
-    updateDoc({ giverParty: { ...giverParty, ...patch } });
-  };
-
-  const updateRecipientParty = (patch: Partial<RecipientPartyInfo>) => {
-    updateDoc({ recipientParty: { ...recipientParty, ...patch } });
+  const handleChangeLetterKind = (nextKind: LetterKind) => {
+    const patch: Partial<LetterDocument> = { letterKind: nextKind };
+    if (nextKind === 'sk') {
+      patch.formatStyle = 'decree';
+      if (!doc.decreeTitle.trim()) patch.decreeTitle = 'SURAT KEPUTUSAN';
+      if (!doc.skData) patch.skData = createDefaultSkData(doc.letterhead, doc.dateString);
+    } else if (nextKind !== 'standard') {
+      if (nextKind === 'surat-pengantar') {
+        patch.formatStyle = 'correspondence';
+        if (!doc.decreeTitle.trim()) patch.decreeTitle = 'SURAT PENGANTAR';
+        if (!doc.forwardingItems) patch.forwardingItems = createDefaultForwardingItems();
+      } else {
+        patch.formatStyle = 'decree';
+        if (!doc.decreeTitle.trim()) {
+          patch.decreeTitle = getDefaultDecreeTitleForKind(nextKind);
+        }
+      }
+      if (!doc.giverParty) patch.giverParty = createDefaultGiverParty(doc.letterhead);
+      if (!doc.recipientParty) patch.recipientParty = createDefaultRecipientParty('guru');
+    } else if (doc.formatStyle === 'decree' && !doc.decreeTitle.trim()) {
+      patch.decreeTitle = getDefaultDecreeTitleForKind('standard');
+    }
+    updateDoc(patch);
   };
 
   const getDefaultSubjectCode = () => getDefaultSubjectCodeForTemplate(doc.templateId);
@@ -209,49 +228,14 @@ export const LetterEditor: React.FC<LetterEditorProps> = ({
     });
   };
 
-  const addDetailRow = () => {
-    updateDoc({
-      detailRows: [
-        ...doc.detailRows,
-        { id: `row-${Date.now()}`, label: 'Keterangan', value: '' },
-      ],
-    });
-  };
-
-  const updateDetailRow = (id: string, field: 'label' | 'value', val: string) => {
-    updateDoc({
-      detailRows: doc.detailRows.map((r) => (r.id === id ? { ...r, [field]: val } : r)),
-    });
-  };
-
-  const removeDetailRow = (id: string) => {
-    updateDoc({
-      detailRows: doc.detailRows.filter((r) => r.id !== id),
-    });
-  };
-
-  const addBodyParagraph = () => {
-    updateDoc({
-      bodyParagraphs: [...doc.bodyParagraphs, ''],
-    });
-  };
-
-  const updateBodyParagraph = (idx: number, val: string) => {
-    const next = [...doc.bodyParagraphs];
-    next[idx] = val;
-    updateDoc({ bodyParagraphs: next });
-  };
-
-  const removeBodyParagraph = (idx: number) => {
-    updateDoc({
-      bodyParagraphs: doc.bodyParagraphs.filter((_, i) => i !== idx),
-    });
-  };
-
   const tabs: { id: EditorTab; label: string; icon: React.ReactNode }[] = [
     { id: 'kop', label: 'Kop Surat', icon: <Building2 className="w-3.5 h-3.5" /> },
     { id: 'kepala', label: 'Nomor & Tujuan', icon: <FileText className="w-3.5 h-3.5" /> },
-    { id: 'isi', label: 'Isi Naskah', icon: <AlignLeft className="w-3.5 h-3.5" /> },
+    {
+      id: 'isi',
+      label: doc.formatStyle === 'correspondence' ? 'Isi Korespondensi' : 'Isi Judul Tengah',
+      icon: <AlignLeft className="w-3.5 h-3.5" />,
+    },
     { id: 'qr', label: 'TTD QR-Code', icon: <QrCode className="w-3.5 h-3.5" /> },
     { id: 'pengesahan', label: 'TTD & Kertas', icon: <PenTool className="w-3.5 h-3.5" /> },
   ];
@@ -740,7 +724,7 @@ export const LetterEditor: React.FC<LetterEditorProps> = ({
                 <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-lg">
                   <button
                     type="button"
-                    onClick={() => updateDoc({ formatStyle: 'correspondence' })}
+                    onClick={() => handleChangeFormatStyle('correspondence')}
                     className={`py-2 px-3 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
                       doc.formatStyle === 'correspondence'
                         ? 'bg-white text-slate-900 shadow-xs'
@@ -751,7 +735,7 @@ export const LetterEditor: React.FC<LetterEditorProps> = ({
                   </button>
                   <button
                     type="button"
-                    onClick={() => updateDoc({ formatStyle: 'decree' })}
+                    onClick={() => handleChangeFormatStyle('decree')}
                     className={`py-2 px-3 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
                       doc.formatStyle === 'decree'
                         ? 'bg-white text-slate-900 shadow-xs'
@@ -920,43 +904,47 @@ export const LetterEditor: React.FC<LetterEditorProps> = ({
 
             {doc.formatStyle === 'correspondence' && (
               <>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className={labelClass}>Sifat Surat</label>
-                    <select
-                      value={doc.urgency}
-                      onChange={(e) => updateDoc({ urgency: e.target.value })}
-                      className={inputClass}
-                    >
-                      <option value="-">Tidak Dicantumkan</option>
-                      <option value="Biasa">Biasa</option>
-                      <option value="Penting">Penting</option>
-                      <option value="Segera">Segera</option>
-                      <option value="Rahasia">Rahasia</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className={labelClass}>Lampiran</label>
-                    <input
-                      type="text"
-                      value={doc.attachment}
-                      onChange={(e) => updateDoc({ attachment: e.target.value })}
-                      placeholder="- atau 1 (satu) berkas"
-                      className={inputClass}
-                    />
-                  </div>
-                </div>
+                {letterKind !== 'surat-pengantar' && (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className={labelClass}>Sifat Surat</label>
+                        <select
+                          value={doc.urgency}
+                          onChange={(e) => updateDoc({ urgency: e.target.value })}
+                          className={inputClass}
+                        >
+                          <option value="-">Tidak Dicantumkan</option>
+                          <option value="Biasa">Biasa</option>
+                          <option value="Penting">Penting</option>
+                          <option value="Segera">Segera</option>
+                          <option value="Rahasia">Rahasia</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelClass}>Lampiran</label>
+                        <input
+                          type="text"
+                          value={doc.attachment}
+                          onChange={(e) => updateDoc({ attachment: e.target.value })}
+                          placeholder="- atau 1 (satu) berkas"
+                          className={inputClass}
+                        />
+                      </div>
+                    </div>
 
-                <div>
-                  <label className={labelClass}>Perihal / Hal</label>
-                  <input
-                    type="text"
-                    value={doc.subject}
-                    onChange={(e) => updateDoc({ subject: e.target.value })}
-                    placeholder="Pokok isi surat"
-                    className={inputClass}
-                  />
-                </div>
+                    <div>
+                      <label className={labelClass}>Perihal / Hal</label>
+                      <input
+                        type="text"
+                        value={doc.subject}
+                        onChange={(e) => updateDoc({ subject: e.target.value })}
+                        placeholder="Pokok isi surat"
+                        className={inputClass}
+                      />
+                    </div>
+                  </>
+                )}
 
                 <div>
                   <label className={labelClass}>Tujuan / Kepada Yth. (1 baris per elemen)</label>
@@ -975,722 +963,50 @@ export const LetterEditor: React.FC<LetterEditorProps> = ({
           </>
         )}
 
-        {activeTab === 'isi' && letterKind === 'sk' && (
-          <>
-            <div>
-              <label className={labelClass}>Tentang (Pokok Keputusan)</label>
-              <textarea
-                rows={2}
-                value={skData.about}
-                onChange={(e) => updateSkData({ about: e.target.value })}
-                placeholder="PENGANGKATAN PANITIA / PENETAPAN TIM KERJA..."
-                className={inputClass}
+        {activeTab === 'isi' && (
+          <div className="space-y-4">
+            {/* Pemilih Pemisah Form Isi Naskah: Korespondensi vs Judul Tengah */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-lg">
+              <button
+                type="button"
+                onClick={() => handleChangeFormatStyle('correspondence')}
+                className={`py-2 px-3 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                  doc.formatStyle === 'correspondence'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Surat Korespondensi
+              </button>
+              <button
+                type="button"
+                onClick={() => handleChangeFormatStyle('decree')}
+                className={`py-2 px-3 text-xs font-medium rounded-md transition-colors cursor-pointer whitespace-nowrap ${
+                  doc.formatStyle === 'decree'
+                    ? 'bg-white text-slate-900 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Surat Judul Tengah
+              </button>
+            </div>
+
+            {doc.formatStyle === 'correspondence' ? (
+              <CorrespondenceContentForm
+                doc={doc}
+                letterKind={letterKind}
+                onUpdateDoc={updateDoc}
+                onChangeLetterKind={handleChangeLetterKind}
               />
-            </div>
-
-            <div>
-              <label className={labelClass}>Jabatan Pejabat Penetap (Baris di bawah Tentang)</label>
-              <input
-                type="text"
-                value={doc.openingParagraph}
-                onChange={(e) => updateDoc({ openingParagraph: e.target.value })}
-                placeholder="Contoh: Kepala SD IT Qudwah Sungai Rengit,"
-                className={inputClass}
+            ) : (
+              <DecreeContentForm
+                doc={doc}
+                letterKind={letterKind}
+                onUpdateDoc={updateDoc}
+                onChangeLetterKind={handleChangeLetterKind}
               />
-            </div>
-
-            {/* Menimbang */}
-            <div className="border-t border-slate-100 pt-4 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-800">
-                  Menimbang (Konsiderans)
-                </label>
-                <button
-                  type="button"
-                  onClick={() =>
-                    updateSkData({ considering: [...skData.considering, 'bahwa '] })
-                  }
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#1e3a5f] bg-slate-100 hover:bg-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Tambah Poin
-                </button>
-              </div>
-              {skData.considering.map((item, idx) => (
-                <div key={idx} className="flex items-start gap-2">
-                  <span className="pt-2 text-xs font-mono font-semibold text-slate-500 w-5 shrink-0">
-                    {String.fromCharCode(97 + idx)}.
-                  </span>
-                  <textarea
-                    rows={2}
-                    value={item}
-                    onChange={(e) => {
-                      const next = [...skData.considering];
-                      next[idx] = e.target.value;
-                      updateSkData({ considering: next });
-                    }}
-                    className={inputClass}
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateSkData({
-                        considering: skData.considering.filter((_, i) => i !== idx),
-                      })
-                    }
-                    className="p-1.5 text-slate-400 hover:text-red-600 rounded cursor-pointer mt-1"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {/* Mengingat */}
-            <div className="border-t border-slate-100 pt-4 space-y-2.5">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-800">
-                  Mengingat (Dasar Hukum / Pedoman)
-                </label>
-                <button
-                  type="button"
-                  onClick={() => updateSkData({ legalBasis: [...skData.legalBasis, ''] })}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#1e3a5f] bg-slate-100 hover:bg-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Tambah Dasar
-                </button>
-              </div>
-              {skData.legalBasis.map((item, idx) => (
-                <div key={idx} className="flex items-start gap-2">
-                  <span className="pt-2 text-xs font-mono font-semibold text-slate-500 w-5 shrink-0">
-                    {idx + 1}.
-                  </span>
-                  <textarea
-                    rows={2}
-                    value={item}
-                    onChange={(e) => {
-                      const next = [...skData.legalBasis];
-                      next[idx] = e.target.value;
-                      updateSkData({ legalBasis: next });
-                    }}
-                    className={inputClass}
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      updateSkData({
-                        legalBasis: skData.legalBasis.filter((_, i) => i !== idx),
-                      })
-                    }
-                    className="p-1.5 text-slate-400 hover:text-red-600 rounded cursor-pointer mt-1"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ))}
-            </div>
-
-            {/* Memutuskan & Menetapkan */}
-            <div className="border-t border-slate-100 pt-4 space-y-3">
-              <div>
-                <label className={labelClass}>Kalimat Penetapan (Menetapkan:)</label>
-                <textarea
-                  rows={2}
-                  value={skData.enactStatement}
-                  onChange={(e) => updateSkData({ enactStatement: e.target.value })}
-                  placeholder="KEPUTUSAN KEPALA ... TENTANG ..."
-                  className={inputClass}
-                />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-semibold text-slate-800">
-                  Diktum / Ketetapan (KESATU, KEDUA, dst.)
-                </label>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const nextLabel =
-                      ORDINAL_CLAUSE_LABELS[skData.clauses.length] ||
-                      `KE-${skData.clauses.length + 1}`;
-                    updateSkData({
-                      clauses: [
-                        ...skData.clauses,
-                        { id: `sk-${Date.now()}`, label: nextLabel, text: '' },
-                      ],
-                    });
-                  }}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#1e3a5f] bg-slate-100 hover:bg-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Tambah Diktum
-                </button>
-              </div>
-
-              <div className="space-y-2.5">
-                {skData.clauses.map((clause, idx) => (
-                  <div
-                    key={clause.id}
-                    className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 space-y-2"
-                  >
-                    <div className="flex items-center justify-between gap-2">
-                      <input
-                        type="text"
-                        value={clause.label}
-                        onChange={(e) => {
-                          const next = [...skData.clauses];
-                          next[idx] = { ...clause, label: e.target.value };
-                          updateSkData({ clauses: next });
-                        }}
-                        className="w-32 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-900 focus:border-[#1e3a5f] focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateSkData({
-                            clauses: skData.clauses.filter((c) => c.id !== clause.id),
-                          })
-                        }
-                        className="text-xs text-red-600 hover:underline cursor-pointer"
-                      >
-                        Hapus
-                      </button>
-                    </div>
-                    <textarea
-                      rows={2}
-                      value={clause.text}
-                      onChange={(e) => {
-                        const next = [...skData.clauses];
-                        next[idx] = { ...clause, text: e.target.value };
-                        updateSkData({ clauses: next });
-                      }}
-                      placeholder="Isi ketetapan..."
-                      className={inputClass}
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Tempat & Tanggal Penetapan */}
-            <div className="border-t border-slate-100 pt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className={labelClass}>Ditetapkan di</label>
-                <input
-                  type="text"
-                  value={skData.establishedIn}
-                  onChange={(e) => updateSkData({ establishedIn: e.target.value })}
-                  placeholder="Sungai Rengit"
-                  className={inputClass}
-                />
-              </div>
-              <div>
-                <label className={labelClass}>Pada tanggal</label>
-                <input
-                  type="text"
-                  value={skData.establishedDate}
-                  onChange={(e) => updateSkData({ establishedDate: e.target.value })}
-                  placeholder={doc.dateString}
-                  className={inputClass}
-                />
-              </div>
-            </div>
-
-            <div className="border-t border-slate-100 pt-4">
-              <label className={labelClass}>Tembusan (1 baris per tujuan, opsional)</label>
-              <textarea
-                rows={3}
-                value={doc.ccList.join('\n')}
-                onChange={(e) => updateDoc({ ccList: e.target.value.split('\n') })}
-                placeholder={'1. Ketua Yayasan;\n2. Arsip.'}
-                className={inputClass}
-              />
-            </div>
-          </>
-        )}
-
-        {activeTab === 'isi' && letterKind !== 'sk' && (
-          <>
-            {/* Formulir Khusus Pemberi & Penerima untuk Tugas / Keterangan / Kuasa / Pengantar */}
-            {letterKind !== 'standard' && (
-              <div className="space-y-4">
-                {/* 1. PIHAK PEMBERI (Nama, Jabatan, Alamat) */}
-                <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3.5 space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-slate-900">
-                      {letterKind === 'surat-tugas'
-                        ? '1. Formulir Yang Memberi Tugas'
-                        : letterKind === 'surat-keterangan'
-                          ? '1. Formulir Yang Menerangkan'
-                          : letterKind === 'surat-kuasa'
-                            ? '1. Formulir Yang Memberi Kuasa (Pihak I)'
-                            : '1. Formulir Yang Memberi Pengantar'}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        updateDoc({
-                          signerName: giverParty.name,
-                          signerDepartment:
-                            letterKind === 'surat-kuasa'
-                              ? 'Pemberi Kuasa,'
-                              : giverParty.title
-                                ? `${giverParty.title},`
-                                : doc.signerDepartment,
-                          signerTitle:
-                            letterKind === 'surat-kuasa' ? giverParty.title : '',
-                        })
-                      }
-                      className="text-[11px] font-medium text-[#1e3a5f] hover:underline cursor-pointer whitespace-nowrap"
-                    >
-                      Samakan dgn Penandatangan
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div>
-                      <label className={labelClass}>Nama</label>
-                      <input
-                        type="text"
-                        value={giverParty.name}
-                        onChange={(e) => updateGiverParty({ name: e.target.value })}
-                        placeholder="Nama lengkap & gelar"
-                        className={inputClass}
-                      />
-                    </div>
-                    <div>
-                      <label className={labelClass}>Jabatan</label>
-                      <input
-                        type="text"
-                        value={giverParty.title}
-                        onChange={(e) => updateGiverParty({ title: e.target.value })}
-                        placeholder="Contoh: Kepala Sekolah / Ketua Yayasan"
-                        className={inputClass}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className={labelClass}>Alamat</label>
-                    <textarea
-                      rows={2}
-                      value={giverParty.address}
-                      onChange={(e) => updateGiverParty({ address: e.target.value })}
-                      placeholder="Alamat lengkap pemberi..."
-                      className={inputClass}
-                    />
-                  </div>
-                </div>
-
-                {/* 2. PIHAK PENERIMA (Lengkap: TTL, NISN jika Siswa / NIY atau NUPTK jika Guru, Jabatan, Alamat) */}
-                <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3.5 space-y-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-xs font-semibold text-slate-900">
-                      {letterKind === 'surat-tugas'
-                        ? '2. Formulir Yang Diberi Tugas'
-                        : letterKind === 'surat-keterangan'
-                          ? '2. Formulir Yang Diterangkan'
-                          : letterKind === 'surat-kuasa'
-                            ? '2. Formulir Yang Diberi Kuasa (Pihak II)'
-                            : '2. Formulir Yang Diberi Pengantar'}
-                    </span>
-
-                    <div className="inline-flex p-0.5 bg-slate-200/80 rounded-md text-[11px] font-medium">
-                      <button
-                        type="button"
-                        onClick={() => updateRecipientParty({ roleType: 'guru' })}
-                        className={`px-2.5 py-1 rounded transition-colors cursor-pointer whitespace-nowrap ${
-                          recipientParty.roleType === 'guru'
-                            ? 'bg-white text-slate-900 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        Guru / Staf
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => updateRecipientParty({ roleType: 'siswa' })}
-                        className={`px-2.5 py-1 rounded transition-colors cursor-pointer whitespace-nowrap ${
-                          recipientParty.roleType === 'siswa'
-                            ? 'bg-white text-slate-900 shadow-xs'
-                            : 'text-slate-600 hover:text-slate-900'
-                        }`}
-                      >
-                        Siswa
-                      </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    <div>
-                      <label className={labelClass}>Nama Lengkap</label>
-                      <input
-                        type="text"
-                        value={recipientParty.name}
-                        onChange={(e) => updateRecipientParty({ name: e.target.value })}
-                        placeholder="Nama lengkap"
-                        className={inputClass}
-                      />
-                    </div>
-                    <div>
-                      <label className={labelClass}>Tempat / Tanggal Lahir</label>
-                      <input
-                        type="text"
-                        value={recipientParty.birthPlaceDate}
-                        onChange={(e) =>
-                          updateRecipientParty({ birthPlaceDate: e.target.value })
-                        }
-                        placeholder="Contoh: Palembang, 21 Mei 1995"
-                        className={inputClass}
-                      />
-                    </div>
-                  </div>
-
-                  {recipientParty.roleType === 'siswa' ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                      <div>
-                        <label className={labelClass}>NISN (Nomor Induk Siswa Nasional)</label>
-                        <input
-                          type="text"
-                          value={recipientParty.studentNisn}
-                          onChange={(e) =>
-                            updateRecipientParty({ studentNisn: e.target.value })
-                          }
-                          placeholder="Contoh: 0154829104"
-                          className={`${inputClass} font-mono tabular-nums`}
-                        />
-                      </div>
-                      <div>
-                        <label className={labelClass}>Jabatan / Kelas</label>
-                        <input
-                          type="text"
-                          value={recipientParty.position}
-                          onChange={(e) =>
-                            updateRecipientParty({ position: e.target.value })
-                          }
-                          placeholder="Contoh: Siswa Kelas IV"
-                          className={inputClass}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                      <div>
-                        <label className={labelClass}>Jenis ID Guru</label>
-                        <select
-                          value={recipientParty.teacherIdType}
-                          onChange={(e) =>
-                            updateRecipientParty({
-                              teacherIdType: e.target.value as 'NIY' | 'NUPTK',
-                            })
-                          }
-                          className={inputClass}
-                        >
-                          <option value="NIY">NIY</option>
-                          <option value="NUPTK">NUPTK</option>
-                        </select>
-                      </div>
-                      <div>
-                        <label className={labelClass}>
-                          Nomor {recipientParty.teacherIdType}
-                        </label>
-                        <input
-                          type="text"
-                          value={recipientParty.teacherIdNumber}
-                          onChange={(e) =>
-                            updateRecipientParty({ teacherIdNumber: e.target.value })
-                          }
-                          placeholder={`Masukkan nomor ${recipientParty.teacherIdType}`}
-                          className={`${inputClass} font-mono tabular-nums`}
-                        />
-                      </div>
-                      <div>
-                        <label className={labelClass}>Jabatan</label>
-                        <input
-                          type="text"
-                          value={recipientParty.position}
-                          onChange={(e) =>
-                            updateRecipientParty({ position: e.target.value })
-                          }
-                          placeholder="Contoh: Guru Kelas"
-                          className={inputClass}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  <div>
-                    <label className={labelClass}>Alamat</label>
-                    <textarea
-                      rows={2}
-                      value={recipientParty.address}
-                      onChange={(e) => updateRecipientParty({ address: e.target.value })}
-                      placeholder="Alamat lengkap..."
-                      className={inputClass}
-                    />
-                  </div>
-                </div>
-
-                {/* 3. DAFTAR BERKAS SURAT PENGANTAR */}
-                {letterKind === 'surat-pengantar' && (
-                  <div className="rounded-lg border border-slate-200 bg-slate-50/70 p-3.5 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-900">
-                        3. Daftar Naskah / Berkas yang Dikirim
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateDoc({
-                            forwardingItems: [
-                              ...forwardingItems,
-                              {
-                                id: `fwd-${Date.now()}`,
-                                description: '',
-                                quantity: '1 (satu) berkas',
-                                notes: 'Disampaikan dengan hormat.',
-                              },
-                            ],
-                          })
-                        }
-                        className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#1e3a5f] bg-white border border-slate-200 hover:bg-slate-100 rounded-md cursor-pointer whitespace-nowrap shrink-0"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                        Tambah Item
-                      </button>
-                    </div>
-
-                    {forwardingItems.length === 0 ? (
-                      <p className="text-xs text-slate-500">
-                        Belum ada daftar berkas. Klik &ldquo;Tambah Item&rdquo; untuk menampilkan tabel pengantar.
-                      </p>
-                    ) : (
-                      <div className="space-y-2.5">
-                        {forwardingItems.map((item, idx) => (
-                          <div
-                            key={item.id}
-                            className="rounded-md border border-slate-200 bg-white p-2.5 space-y-2"
-                          >
-                            <div className="flex items-center justify-between">
-                              <span className="text-[11px] font-semibold text-slate-500">
-                                Item #{idx + 1}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  updateDoc({
-                                    forwardingItems: forwardingItems.filter(
-                                      (f) => f.id !== item.id
-                                    ),
-                                  })
-                                }
-                                className="text-xs text-red-600 hover:underline cursor-pointer"
-                              >
-                                Hapus
-                              </button>
-                            </div>
-                            <input
-                              type="text"
-                              value={item.description}
-                              onChange={(e) =>
-                                updateDoc({
-                                  forwardingItems: forwardingItems.map((f) =>
-                                    f.id === item.id
-                                      ? { ...f, description: e.target.value }
-                                      : f
-                                  ),
-                                })
-                              }
-                              placeholder="Jenis naskah / berkas / barang"
-                              className={inputClass}
-                            />
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              <input
-                                type="text"
-                                value={item.quantity}
-                                onChange={(e) =>
-                                  updateDoc({
-                                    forwardingItems: forwardingItems.map((f) =>
-                                      f.id === item.id
-                                        ? { ...f, quantity: e.target.value }
-                                        : f
-                                    ),
-                                  })
-                                }
-                                placeholder="Banyaknya (mis. 1 berkas)"
-                                className={inputClass}
-                              />
-                              <input
-                                type="text"
-                                value={item.notes}
-                                onChange={(e) =>
-                                  updateDoc({
-                                    forwardingItems: forwardingItems.map((f) =>
-                                      f.id === item.id
-                                        ? { ...f, notes: e.target.value }
-                                        : f
-                                    ),
-                                  })
-                                }
-                                placeholder="Keterangan"
-                                className={inputClass}
-                              />
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
             )}
-
-            <div>
-              <label className={labelClass}>Salam Pembuka (Opsional)</label>
-              <input
-                type="text"
-                value={doc.salutation}
-                onChange={(e) => updateDoc({ salutation: e.target.value })}
-                placeholder="Dengan hormat, (kosongkan jika tidak perlu)"
-                className={inputClass}
-              />
-            </div>
-
-            <div>
-              <label className={labelClass}>
-                {letterKind === 'standard'
-                  ? 'Paragraf Pembuka'
-                  : 'Kalimat Pengantar / Penghubung Pihak'}
-              </label>
-              <textarea
-                rows={letterKind === 'standard' ? 4 : 2}
-                value={doc.openingParagraph}
-                onChange={(e) => updateDoc({ openingParagraph: e.target.value })}
-                className={inputClass}
-              />
-            </div>
-
-            {/* Detail Terstruktur */}
-            <div className="border-t border-slate-100 pt-4">
-              <div className="flex items-center justify-between mb-2">
-                <label className="text-xs font-medium text-slate-700">
-                  {letterKind === 'standard'
-                    ? 'Blok Rincian Data (Hari/Waktu/Identitas/Poin)'
-                    : 'Rincian Tambahan (Jadwal / Tahun Pelajaran / Opsional)'}
-                </label>
-                <button
-                  type="button"
-                  onClick={addDetailRow}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#1e3a5f] bg-slate-100 hover:bg-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Tambah Baris
-                </button>
-              </div>
-
-              {doc.detailRows.length === 0 ? (
-                <p className="text-xs text-slate-500 py-2">
-                  Belum ada baris rincian tambahan. Klik &ldquo;Tambah Baris&rdquo; bila diperlukan.
-                </p>
-              ) : (
-                <div className="space-y-2">
-                  {doc.detailRows.map((row) => (
-                    <div key={row.id} className="flex items-start gap-2">
-                      <input
-                        type="text"
-                        value={row.label}
-                        onChange={(e) => updateDetailRow(row.id, 'label', e.target.value)}
-                        placeholder="Label (mis. Hari)"
-                        className="w-36 shrink-0 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-[#1e3a5f] focus:outline-none"
-                      />
-                      <input
-                        type="text"
-                        value={row.value}
-                        onChange={(e) => updateDetailRow(row.id, 'value', e.target.value)}
-                        placeholder="Isi keterangan"
-                        className="flex-1 rounded-md border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-900 focus:border-[#1e3a5f] focus:outline-none"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => removeDetailRow(row.id)}
-                        title="Hapus baris"
-                        className="p-1.5 text-slate-400 hover:text-red-600 rounded cursor-pointer"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Paragraf Isi */}
-            <div className="border-t border-slate-100 pt-4 space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-slate-700">
-                  {letterKind === 'surat-tugas'
-                    ? 'Uraian Tugas & Ketentuan Pelaksanaan'
-                    : letterKind === 'surat-keterangan'
-                      ? 'Isi Keterangan & Keperluan'
-                      : letterKind === 'surat-kuasa'
-                        ? 'Isi Pelimpahan Kuasa'
-                        : letterKind === 'surat-pengantar'
-                          ? 'Keterangan Pengantar Tambahan'
-                          : 'Paragraf Isi Lanjutan'}
-                </label>
-                <button
-                  type="button"
-                  onClick={addBodyParagraph}
-                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium text-[#1e3a5f] bg-slate-100 hover:bg-slate-200 rounded-md cursor-pointer whitespace-nowrap shrink-0"
-                >
-                  <Plus className="w-3.5 h-3.5" />
-                  Tambah Paragraf
-                </button>
-              </div>
-
-              {doc.bodyParagraphs.map((para, idx) => (
-                <div key={idx} className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs text-slate-500">Paragraf {idx + 1}</span>
-                    <button
-                      type="button"
-                      onClick={() => removeBodyParagraph(idx)}
-                      className="text-xs text-red-600 hover:underline cursor-pointer"
-                    >
-                      Hapus
-                    </button>
-                  </div>
-                  <textarea
-                    rows={3}
-                    value={para}
-                    onChange={(e) => updateBodyParagraph(idx, e.target.value)}
-                    className={inputClass}
-                  />
-                </div>
-              ))}
-            </div>
-
-            <div className="border-t border-slate-100 pt-4">
-              <label className={labelClass}>Paragraf Penutup</label>
-              <textarea
-                rows={3}
-                value={doc.closingParagraph}
-                onChange={(e) => updateDoc({ closingParagraph: e.target.value })}
-                className={inputClass}
-              />
-            </div>
-
-            <div className="border-t border-slate-100 pt-4">
-              <label className={labelClass}>Tembusan (1 baris per tujuan, opsional)</label>
-              <textarea
-                rows={3}
-                value={doc.ccList.join('\n')}
-                onChange={(e) => updateDoc({ ccList: e.target.value.split('\n') })}
-                placeholder={'1. Kepala Bagian Umum;\n2. Arsip.'}
-                className={inputClass}
-              />
-            </div>
-          </>
+          </div>
         )}
 
         {activeTab === 'qr' && (

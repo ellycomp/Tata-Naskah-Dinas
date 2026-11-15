@@ -337,7 +337,7 @@ export function createDefaultRecipientParty(role: 'guru' | 'siswa' = 'guru'): Re
       studentNisn: '0154829104',
       teacherIdType: 'NIY',
       teacherIdNumber: '',
-      position: 'Siswa Kelas IV (Empat)',
+      position: 'IV (Empat)',
       address: 'Dusun II Desa Sungai Rengit, Kec. Talang Kelapa, Kab. Banyuasin',
     };
   }
